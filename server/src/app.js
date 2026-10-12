@@ -1,42 +1,62 @@
 import express from 'express';
+import helmet from 'helmet';
 import cors from 'cors';
+import cookieParser from 'cookie-parser';
+import mongoSanitize from 'express-mongo-sanitize';
 import morgan from 'morgan';
 import env from './config/env.js';
+import ApiError from './utils/ApiError.js';
+import { generalLimiter } from './middlewares/rateLimit.js';
 import apiRouter from './routes/index.js';
 import notFound from './middlewares/notFound.js';
 import errorHandler from './middlewares/errorHandler.js';
 
 const app = express();
 
-// Tắt header X-Powered-By để bảo mật
+// Trust proxy khi chay sau reverse proxy theo CONVENTIONS.md §5.4
+app.set('trust proxy', 1);
+
+// Tat header X-Powered-By de bao mat
 app.disable('x-powered-by');
 
-// CORS whitelist cấu hình từ .env
+// Helmet bat day du cac header bao mat HTTP
+app.use(helmet());
+
+// CORS whitelist cau hinh tu bien CORS_ORIGINS, credentials: true, khong dung *
 app.use(
   cors({
     origin: (origin, callback) => {
-      // Cho phép requests không có origin (vd: Postman, curl, server-to-server) hoặc thuộc whitelist
+      // Cho phep requests khong co origin (vd: Postman, curl, server-to-server) hoac thuoc whitelist
       if (!origin || env.CORS_ORIGINS.includes(origin)) {
         return callback(null, true);
       }
-      return callback(new Error(`Origin ${origin} không được phép bởi CORS`));
+      const corsError = new ApiError(403, 'FORBIDDEN', `Origin ${origin} khong duoc phep boi CORS`);
+      corsError.isCors = true;
+      return callback(corsError);
     },
     credentials: true,
   })
 );
 
-// Logging HTTP request
+// Gioi han rate limit chung: 100 req/phut/IP
+app.use(generalLimiter);
+
+// Chi bat morgan khi NODE_ENV=development
 if (env.isDevelopment) {
   app.use(morgan('dev'));
-} else {
-  app.use(morgan('combined'));
 }
 
-// Giới hạn kích thước body theo CONVENTIONS.md §5.3
+// Gioi han kich thuoc body 10kb theo CONVENTIONS.md §5.3
 app.use(express.json({ limit: '10kb' }));
 app.use(express.urlencoded({ extended: true, limit: '10kb' }));
 
-// Route gốc chào mừng
+// Cookie parser cho refresh token
+app.use(cookieParser());
+
+// Chong NoSQL injection: loai bo khoa bat dau bang $ hoac chua dau cham
+app.use(mongoSanitize());
+
+// Route goc chao mung
 app.get('/', (req, res) => {
   res.json({
     name: 'Library Management API',
@@ -46,13 +66,13 @@ app.get('/', (req, res) => {
   });
 });
 
-// Gắn router chính cho toàn bộ API
+// Gan router chinh cho toan bo API
 app.use('/api', apiRouter);
 
-// Middleware xử lý 404
+// Middleware xu ly 404
 app.use(notFound);
 
-// Middleware xử lý lỗi tập trung
+// Middleware xu ly loi tap trung
 app.use(errorHandler);
 
 export default app;

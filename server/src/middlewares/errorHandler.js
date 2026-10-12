@@ -5,10 +5,23 @@ import env from '../config/env.js';
  * Nơi duy nhất định dạng response lỗi theo chuẩn API.md §1 & §2
  */
 export const errorHandler = (err, req, res, next) => {
-  let statusCode = err.statusCode || 500;
+  let statusCode = err.statusCode || err.status || 500;
   let code = err.code || 'INTERNAL_ERROR';
   let message = err.message || 'Lỗi máy chủ nội bộ';
   let details = err.details || null;
+
+  // Xu ly loi body vuot qua gioi han kich thuoc (10kb)
+  if (err.type === 'entity.too.large' || statusCode === 413) {
+    statusCode = 413;
+    code = 'PAYLOAD_TOO_LARGE';
+    message = 'Dung lượng yêu cầu vượt quá giới hạn cho phép (tối đa 10KB)';
+  }
+
+  // Xu ly loi CORS
+  if (err.isCors || (err.message && err.message.includes('CORS'))) {
+    statusCode = 403;
+    code = 'FORBIDDEN';
+  }
 
   // Xử lý lỗi Mongoose CastError (sai ObjectId hoặc sai kiểu dữ liệu)
   if (err.name === 'CastError') {
@@ -71,7 +84,7 @@ export const errorHandler = (err, req, res, next) => {
       code,
       message,
       ...(details && { details }),
-      ...(env.isDevelopment && { stack: err.stack }),
+      ...(!env.isProduction && env.isDevelopment && err.stack ? { stack: err.stack } : {}),
     },
   };
 

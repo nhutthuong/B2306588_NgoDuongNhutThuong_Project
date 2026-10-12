@@ -5,20 +5,29 @@ import { ok } from '../utils/response.js';
 const router = Router();
 
 /**
- * Health check endpoint: GET /api/health
+ * Health check & security verification endpoint: /api/health
  */
-router.get('/health', (req, res) => {
+router.all('/health', (req, res) => {
   const dbStatus = mongoose.connection.readyState === 1 ? 'connected' : 'disconnected';
-  return ok(
-    res,
-    {
-      status: 'OK',
-      database: dbStatus,
-      uptime: Math.floor(process.uptime()),
-      timestamp: new Date().toISOString(),
-    },
-    'Dịch vụ hoạt động bình thường'
-  );
+  const data = {
+    status: 'OK',
+    database: dbStatus,
+    uptime: Math.floor(process.uptime()),
+    timestamp: new Date().toISOString(),
+  };
+
+  // Tra ve query, body, cookies da qua sanitize/parser de tien kiem tra bao mat
+  if (req.query && Object.keys(req.query).length > 0) {
+    data.query = req.query;
+  }
+  if (req.body && Object.keys(req.body).length > 0) {
+    data.body = req.body;
+  }
+  if (req.cookies && Object.keys(req.cookies).length > 0) {
+    data.cookies = req.cookies;
+  }
+
+  return ok(res, data, 'Dịch vụ hoạt động bình thường');
 });
 
 export default router;
