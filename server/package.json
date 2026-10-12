@@ -8,9 +8,11 @@
     "dev": "nodemon src/server.js",
     "start": "node src/server.js",
     "seed": "node src/seeds/seed.js",
+    "seed:reset": "node src/seeds/seed.js --reset",
     "check:models": "node src/seeds/checkModels.js"
   },
   "dependencies": {
+    "bcryptjs": "^3.0.3",
     "cookie-parser": "^1.4.7",
     "cors": "^2.8.5",
     "dotenv": "^16.4.7",

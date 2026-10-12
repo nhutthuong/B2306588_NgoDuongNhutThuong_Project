@@ -22,6 +22,7 @@ const envSchema = Joi.object({
   CORS_ORIGINS: Joi.string().default('http://localhost:5173,http://localhost:5174'),
   COOKIE_SECURE: Joi.boolean().truthy('true', '1').falsy('false', '0').default(false),
   SEED_ADMIN_PASSWORD: Joi.string().allow('').optional(),
+  SEED_DEMO_PASSWORD: Joi.string().default('DocGia@123456'),
 }).unknown(true);
 
 const { error, value: validatedEnv } = envSchema.validate(process.env, {
@@ -51,6 +52,7 @@ export const env = {
   CORS_ORIGINS: corsOrigins,
   COOKIE_SECURE: validatedEnv.COOKIE_SECURE,
   SEED_ADMIN_PASSWORD: validatedEnv.SEED_ADMIN_PASSWORD,
+  SEED_DEMO_PASSWORD: validatedEnv.SEED_DEMO_PASSWORD,
   isProduction: validatedEnv.NODE_ENV === 'production',
   isDevelopment: validatedEnv.NODE_ENV === 'development',
   isTest: validatedEnv.NODE_ENV === 'test',
