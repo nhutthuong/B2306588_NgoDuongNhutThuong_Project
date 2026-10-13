@@ -2,11 +2,14 @@ import { Router } from 'express';
 import mongoose from 'mongoose';
 import { ok } from '../utils/response.js';
 import adminRouter from './admin/index.js';
+import userRouter from './user/index.js';
 
 const router = Router();
 
 // Gắn các nhánh router chính
 router.use('/admin', adminRouter);
+router.use('/user', userRouter);
+
 
 
 /**

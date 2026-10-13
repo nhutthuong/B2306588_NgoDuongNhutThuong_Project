@@ -11,7 +11,8 @@
     "seed:reset": "node src/seeds/seed.js --reset",
     "check:models": "node src/seeds/checkModels.js",
     "check:auth": "node src/seeds/checkAuth.js",
-    "check:admin-auth": "node src/seeds/checkAdminAuth.js"
+    "check:admin-auth": "node src/seeds/checkAdminAuth.js",
+    "check:userauth": "node src/seeds/checkUserAuth.js"
   },
   "dependencies": {
     "bcryptjs": "^3.0.3",
