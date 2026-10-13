@@ -1,8 +1,13 @@
 import { Router } from 'express';
 import mongoose from 'mongoose';
 import { ok } from '../utils/response.js';
+import adminRouter from './admin/index.js';
 
 const router = Router();
+
+// Gắn các nhánh router chính
+router.use('/admin', adminRouter);
+
 
 /**
  * Health check & security verification endpoint: /api/health
