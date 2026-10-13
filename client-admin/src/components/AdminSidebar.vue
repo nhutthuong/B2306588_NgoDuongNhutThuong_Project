@@ -1,10 +1,11 @@
 <script setup>
+import { computed } from 'vue';
 import { RouterLink } from 'vue-router';
 import { useAuthStore } from '../stores/auth.js';
 
 const authStore = useAuthStore();
 
-// Danh sach menu quan tri theo CONVENTIONS.md §3 & Yeu cau P0-5
+// Danh sách menu quản trị theo CONVENTIONS.md §3 & Yêu cầu P1-4
 const menuItems = [
   { path: '/', label: 'Dashboard', icon: 'bi-speedometer2' },
   { path: '/books', label: 'Sách', icon: 'bi-book' },
@@ -15,6 +16,16 @@ const menuItems = [
   { path: '/settings', label: 'Cấu hình', icon: 'bi-gear', adminOnly: true },
   { path: '/audit-logs', label: 'Nhật ký', icon: 'bi-journal-text', adminOnly: true },
 ];
+
+// Lọc menu theo quyền vai trò: thủ thư sẽ ẩn các mục chỉ dành riêng cho Admin
+const visibleMenuItems = computed(() => {
+  return menuItems.filter((item) => {
+    if (item.adminOnly) {
+      return authStore.isAdmin;
+    }
+    return true;
+  });
+});
 </script>
 
 <template>
@@ -43,7 +54,7 @@ const menuItems = [
         <div class="px-3 pb-2 text-uppercase text-muted fw-bold small">
           Danh mục quản lý
         </div>
-        <template v-for="item in menuItems" :key="item.path">
+        <template v-for="item in visibleMenuItems" :key="item.path">
           <RouterLink
             :to="item.path"
             class="nav-link"
@@ -64,8 +75,13 @@ const menuItems = [
       </nav>
 
       <div class="p-3 border-top border-secondary small text-secondary">
-        <div>Hệ thống Quản lý Thư viện</div>
-        <div class="text-muted">Phiên bản 1.0.0 (Giai đoạn 0)</div>
+        <div class="text-white-50">Hệ thống Quản lý Thư viện</div>
+        <div class="text-muted mt-1">
+          Vai trò:
+          <span class="text-white fw-medium">
+            {{ authStore.isAdmin ? 'Quản trị viên' : 'Thủ thư' }}
+          </span>
+        </div>
       </div>
     </div>
   </aside>

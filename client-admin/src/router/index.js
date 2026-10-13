@@ -1,5 +1,24 @@
 import { createRouter, createWebHistory } from 'vue-router';
+import { useAuthStore } from '../stores/auth.js';
 import DashboardView from '../views/DashboardView.vue';
+
+/**
+ * Hàm kiểm tra và chuẩn hóa đường dẫn chuyển hướng an toàn chống Open Redirect
+ * Chỉ chấp nhận đường dẫn nội bộ (bắt đầu bằng đúng một dấu '/' và không chứa '://' hoặc '//')
+ * @param {string|null} redirect
+ * @returns {string}
+ */
+export const getSafeRedirectUrl = (redirect) => {
+  if (
+    typeof redirect === 'string' &&
+    redirect.startsWith('/') &&
+    !redirect.startsWith('//') &&
+    !redirect.includes('://')
+  ) {
+    return redirect;
+  }
+  return '/';
+};
 
 const routes = [
   {
@@ -7,6 +26,18 @@ const routes = [
     name: 'login',
     component: () => import('../views/LoginView.vue'),
     meta: { title: 'Đăng nhập Quản trị', layout: 'auth' },
+  },
+  {
+    path: '/change-password',
+    name: 'change-password',
+    component: () => import('../views/ChangePasswordView.vue'),
+    meta: { requiresAuth: true, title: 'Đổi mật khẩu' },
+  },
+  {
+    path: '/forbidden',
+    name: 'forbidden',
+    component: () => import('../views/ForbiddenView.vue'),
+    meta: { requiresAuth: true, title: 'Không có quyền truy cập (403)' },
   },
   {
     path: '/',
@@ -81,24 +112,54 @@ const router = createRouter({
   routes,
 });
 
-// Navigation guard
-router.beforeEach((to, from, next) => {
-  // Cap nhat tieu de trinh duyet
+/**
+ * Navigation Guard kiểm tra xác thực và phân quyền
+ * Lưu ý quan trọng: Route guard ở frontend chỉ nhằm mục đích nâng cao trải nghiệm người dùng (UX).
+ * Toàn bộ quyền truy cập và tính bảo mật được thực thi và kiểm tra bắt buộc ở backend qua middlewares.
+ */
+router.beforeEach(async (to, from, next) => {
+  // Cập nhật tiêu đề trang
   if (to.meta.title) {
     document.title = `${to.meta.title} — Quản trị Thư viện`;
   }
 
-  // TODO (P1-4): Kiem tra authStore.isAuthenticated va authStore.user.VaiTro khi backend hoan thanh Phase 1
-  // const requiresAuth = to.meta.requiresAuth;
-  // const roles = to.meta.roles;
-  // if (requiresAuth && !authStore.isAuthenticated) {
-  //   return next({ name: 'login', query: { redirect: to.fullPath } });
-  // }
-  // if (roles && !roles.includes(authStore.user?.VaiTro)) {
-  //   return next({ name: 'dashboard' });
-  // }
+  const authStore = useAuthStore();
 
-  // Giai doan P0-5: chua chan ai, cho phep di tiep de kiem tra giao dien
+  // 1. Nếu chưa khởi tạo phiên (ví dụ sau khi tải lại trang F5), đợi khôi phục phiên từ cookie
+  if (!authStore.initialized) {
+    await authStore.initSession();
+  }
+
+  // 2. Kiểm tra route yêu cầu đăng nhập
+  if (to.meta.requiresAuth && !authStore.isAuthenticated) {
+    return next({
+      name: 'login',
+      query: { redirect: to.fullPath },
+    });
+  }
+
+  // 3. Đã đăng nhập mà truy cập trang /login: chuyển về trang chủ
+  if (to.name === 'login' && authStore.isAuthenticated) {
+    if (authStore.mustChangePassword) {
+      return next({ name: 'change-password' });
+    }
+    return next({ path: '/' });
+  }
+
+  // 4. Nếu tài khoản bắt buộc đổi mật khẩu (lần đầu): chỉ cho phép vào /change-password
+  if (authStore.isAuthenticated && authStore.mustChangePassword) {
+    if (to.name !== 'change-password') {
+      return next({ name: 'change-password' });
+    }
+  }
+
+  // 5. Kiểm tra phân quyền theo vai trò (meta.roles: ['admin'])
+  if (to.meta.roles && to.meta.roles.length > 0) {
+    if (!to.meta.roles.includes(authStore.role)) {
+      return next({ name: 'forbidden' });
+    }
+  }
+
   next();
 });
 
