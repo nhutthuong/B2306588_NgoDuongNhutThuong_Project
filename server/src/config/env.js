@@ -11,14 +11,21 @@ const envSchema = Joi.object({
   MONGO_URI: Joi.string().required().messages({
     'any.required': 'MONGO_URI là bắt buộc trong file .env',
   }),
-  JWT_USER_SECRET: Joi.string().min(16).required().messages({
-    'any.required': 'JWT_USER_SECRET là bắt buộc trong file .env (tối thiểu 16 ký tự)',
+  JWT_USER_SECRET: Joi.string().min(32).required().messages({
+    'any.required': 'JWT_USER_SECRET là bắt buộc trong file .env (tối thiểu 32 ký tự)',
+    'string.min': 'JWT_USER_SECRET phải có độ dài tối thiểu 32 ký tự',
   }),
-  JWT_ADMIN_SECRET: Joi.string().min(16).required().messages({
-    'any.required': 'JWT_ADMIN_SECRET là bắt buộc trong file .env (tối thiểu 16 ký tự)',
-  }),
+  JWT_ADMIN_SECRET: Joi.string()
+    .min(32)
+    .disallow(Joi.ref('JWT_USER_SECRET'))
+    .required()
+    .messages({
+      'any.required': 'JWT_ADMIN_SECRET là bắt buộc trong file .env (tối thiểu 32 ký tự)',
+      'string.min': 'JWT_ADMIN_SECRET phải có độ dài tối thiểu 32 ký tự',
+      'any.invalid': 'JWT_ADMIN_SECRET phải khác JWT_USER_SECRET để đảm bảo an toàn phân quyền',
+    }),
   JWT_ACCESS_EXPIRES: Joi.string().default('15m'),
-  JWT_REFRESH_EXPIRES_DAYS: Joi.number().default(7),
+  JWT_REFRESH_EXPIRES_DAYS: Joi.number().positive().default(7),
   CORS_ORIGINS: Joi.string().default('http://localhost:5173,http://localhost:5174'),
   COOKIE_SECURE: Joi.boolean().truthy('true', '1').falsy('false', '0').default(false),
   SEED_ADMIN_PASSWORD: Joi.string().allow('').optional(),

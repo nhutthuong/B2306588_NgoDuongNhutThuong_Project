@@ -9,7 +9,8 @@
     "start": "node src/server.js",
     "seed": "node src/seeds/seed.js",
     "seed:reset": "node src/seeds/seed.js --reset",
-    "check:models": "node src/seeds/checkModels.js"
+    "check:models": "node src/seeds/checkModels.js",
+    "check:auth": "node src/seeds/checkAuth.js"
   },
   "dependencies": {
     "bcryptjs": "^3.0.3",
@@ -21,6 +22,7 @@
     "express-rate-limit": "^8.7.1",
     "helmet": "^8.3.0",
     "joi": "^17.13.3",
+    "jsonwebtoken": "^9.0.3",
     "mongoose": "^8.9.5",
     "morgan": "^1.10.0"
   },
