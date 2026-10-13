@@ -1,5 +1,24 @@
 import { createRouter, createWebHistory } from 'vue-router';
+import { useAuthStore } from '../stores/auth.js';
 import HomeView from '../views/HomeView.vue';
+
+/**
+ * Hàm kiểm tra và chuẩn hóa đường dẫn chuyển hướng an toàn chống Open Redirect
+ * Chỉ chấp nhận đường dẫn nội bộ (bắt đầu bằng đúng một dấu '/' và không chứa '://' hoặc '//')
+ * @param {string|null} redirect
+ * @returns {string}
+ */
+export const getSafeRedirectUrl = (redirect) => {
+  if (
+    typeof redirect === 'string' &&
+    redirect.startsWith('/') &&
+    !redirect.startsWith('//') &&
+    !redirect.includes('://')
+  ) {
+    return redirect;
+  }
+  return '/';
+};
 
 const routes = [
   {
@@ -51,21 +70,37 @@ const router = createRouter({
   routes,
 });
 
-// Navigation guard
-router.beforeEach((to, from, next) => {
-  // Cap nhat tieu de trang
+/**
+ * Navigation Guard kiểm tra xác thực độc giả
+ * Lưu ý: Route guard ở frontend chỉ nhằm mục đích nâng cao trải nghiệm người dùng (UX).
+ * Quyền truy cập và kiểm soát IDOR thực tế được thực thi nghiêm ngặt tại backend (authUser).
+ */
+router.beforeEach(async (to, from, next) => {
+  // Cập nhật tiêu đề trình duyệt
   if (to.meta.title) {
     document.title = `${to.meta.title} — Thư viện điện tử`;
   }
 
-  // TODO (P1-5): Kiem tra authStore.isAuthenticated va vai tro khi backend hoan thanh Phase 1
-  // const requiresAuth = to.meta.requiresAuth;
-  // const roles = to.meta.roles;
-  // if (requiresAuth && !authStore.isAuthenticated) {
-  //   return next({ name: 'login', query: { redirect: to.fullPath } });
-  // }
+  const authStore = useAuthStore();
 
-  // Giai doan P0-5: chua chan ai, cho phep di tiep de kiem tra giao dien
+  // 1. Khôi phục phiên làm việc qua cookie nếu chưa initialized
+  if (!authStore.initialized) {
+    await authStore.initSession();
+  }
+
+  // 2. Route yêu cầu đăng nhập (requiresAuth): chưa đăng nhập thì chuyển về /login
+  if (to.meta.requiresAuth && !authStore.isAuthenticated) {
+    return next({
+      name: 'login',
+      query: { redirect: to.fullPath },
+    });
+  }
+
+  // 3. Đã đăng nhập mà truy cập /login hoặc /register: chuyển về trang chủ
+  if ((to.name === 'login' || to.name === 'register') && authStore.isAuthenticated) {
+    return next({ path: '/' });
+  }
+
   next();
 });
 
