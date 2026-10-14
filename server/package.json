@@ -13,7 +13,8 @@
     "check:auth": "node src/seeds/checkAuth.js",
     "check:admin-auth": "node src/seeds/checkAdminAuth.js",
     "check:userauth": "node src/seeds/checkUserAuth.js",
-    "check:publishers": "node src/seeds/checkPublishers.js"
+    "check:publishers": "node src/seeds/checkPublishers.js",
+    "check:books": "node src/seeds/checkBooks.js"
   },
   "dependencies": {
     "bcryptjs": "^3.0.3",
@@ -27,7 +28,8 @@
     "joi": "^17.13.3",
     "jsonwebtoken": "^9.0.3",
     "mongoose": "^8.9.5",
-    "morgan": "^1.10.0"
+    "morgan": "^1.10.0",
+    "multer": "^2.4.0"
   },
   "devDependencies": {
     "nodemon": "^3.1.9"

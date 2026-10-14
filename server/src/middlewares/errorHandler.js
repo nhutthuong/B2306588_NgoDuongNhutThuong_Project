@@ -17,6 +17,27 @@ export const errorHandler = (err, req, res, next) => {
     message = 'Dung lượng yêu cầu vượt quá giới hạn cho phép (tối đa 10KB)';
   }
 
+  // Xử lý lỗi tải tệp Multer
+  if (err.name === 'MulterError') {
+    if (err.code === 'LIMIT_FILE_SIZE') {
+      statusCode = 413;
+      code = 'PAYLOAD_TOO_LARGE';
+      message = 'Dung lượng ảnh bìa vượt quá giới hạn (ảnh tối đa 2MB)';
+    } else if (err.code === 'LIMIT_FILE_COUNT') {
+      statusCode = 400;
+      code = 'VALIDATION_ERROR';
+      message = 'Chỉ được phép tải lên tối đa 1 tệp ảnh bìa';
+    } else if (err.code === 'LIMIT_UNEXPECTED_FILE') {
+      statusCode = 400;
+      code = 'VALIDATION_ERROR';
+      message = `Trường tải lên không hợp lệ hoặc quá số lượng cho phép: '${err.field || 'AnhBia'}'`;
+    } else {
+      statusCode = 400;
+      code = 'VALIDATION_ERROR';
+      message = `Lỗi tải tệp: ${err.message}`;
+    }
+  }
+
   // Xu ly loi CORS
   if (err.isCors || (err.message && err.message.includes('CORS'))) {
     statusCode = 403;

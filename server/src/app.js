@@ -1,3 +1,5 @@
+import fs from 'fs';
+import path from 'path';
 import express from 'express';
 import helmet from 'helmet';
 import cors from 'cors';
@@ -10,6 +12,7 @@ import { generalLimiter } from './middlewares/rateLimit.js';
 import apiRouter from './routes/index.js';
 import notFound from './middlewares/notFound.js';
 import errorHandler from './middlewares/errorHandler.js';
+import { COVERS_DIR, SAFE_FILENAME_REGEX } from './utils/imageType.js';
 
 const app = express();
 
@@ -64,6 +67,37 @@ app.get('/', (req, res) => {
     documentation: '/docs',
     health: '/api/health',
   });
+});
+
+// Route phuc vu file tinh anh bia: GET /uploads/covers/:filename theo API.md §5
+// Thiet lap Cross-Origin-Resource-Policy: cross-origin de client khac cong (5173, 5174) load duoc anh
+app.get('/uploads/covers/:filename', (req, res, next) => {
+  const { filename } = req.params;
+
+  // Chi phuc vu file co ten khop dinh dang UUID/hex hop le (.jpg|.png|.webp), chan dotfiles va path traversal
+  if (!SAFE_FILENAME_REGEX.test(filename)) {
+    return next(new ApiError(404, 'NOT_FOUND', 'Không tìm thấy tệp ảnh bìa'));
+  }
+
+  const filePath = path.join(COVERS_DIR, filename);
+  if (!fs.existsSync(filePath)) {
+    return next(new ApiError(404, 'NOT_FOUND', 'Không tìm thấy tệp ảnh bìa'));
+  }
+
+  res.setHeader('Cross-Origin-Resource-Policy', 'cross-origin');
+  res.setHeader('X-Content-Type-Options', 'nosniff');
+  res.setHeader('Cache-Control', 'public, max-age=86400, immutable');
+
+  const ext = path.extname(filename).toLowerCase();
+  const mimeTypes = {
+    '.jpg': 'image/jpeg',
+    '.jpeg': 'image/jpeg',
+    '.png': 'image/png',
+    '.webp': 'image/webp',
+  };
+  res.setHeader('Content-Type', mimeTypes[ext] || 'application/octet-stream');
+
+  return res.sendFile(filePath);
 });
 
 // Gan router chinh cho toan bo API
