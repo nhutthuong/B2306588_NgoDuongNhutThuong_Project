@@ -1,8 +1,9 @@
 <script setup>
 import { computed } from 'vue';
-import { RouterLink } from 'vue-router';
+import { useRoute, RouterLink } from 'vue-router';
 import { useAuthStore } from '../stores/auth.js';
 
+const route = useRoute();
 const authStore = useAuthStore();
 
 // Danh sách menu quản trị theo CONVENTIONS.md §3 & Yêu cầu P1-4
@@ -16,6 +17,12 @@ const menuItems = [
   { path: '/settings', label: 'Cấu hình', icon: 'bi-gear', adminOnly: true },
   { path: '/audit-logs', label: 'Nhật ký', icon: 'bi-journal-text', adminOnly: true },
 ];
+
+// Xác định mục menu đang sáng theo đường dẫn hiện tại (kể cả các trang con như /books/new, /books/:maSach/edit)
+const isItemActive = (path) => {
+  if (path === '/') return route.path === '/';
+  return route.path === path || route.path.startsWith(`${path}/`);
+};
 
 // Lọc menu theo quyền vai trò: thủ thư sẽ ẩn các mục chỉ dành riêng cho Admin
 const visibleMenuItems = computed(() => {
@@ -58,8 +65,7 @@ const visibleMenuItems = computed(() => {
           <RouterLink
             :to="item.path"
             class="nav-link"
-            active-class="active"
-            :exact="item.path === '/'"
+            :class="{ active: isItemActive(item.path) }"
           >
             <i class="bi fs-5" :class="item.icon"></i>
             <span>{{ item.label }}</span>

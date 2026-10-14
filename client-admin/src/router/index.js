@@ -48,25 +48,32 @@ const routes = [
   {
     path: '/books',
     name: 'books',
-    component: () => import('../views/BooksView.vue'),
+    component: () => import('../views/BookListView.vue'),
     meta: { requiresAuth: true, title: 'Quản lý Sách' },
   },
   {
     path: '/books/new',
     name: 'book-create',
-    component: () => import('../views/BookCreateView.vue'),
+    component: () => import('../views/BookFormView.vue'),
     meta: { requiresAuth: true, title: 'Thêm Sách mới' },
   },
   {
     path: '/books/:maSach/edit',
     name: 'book-edit',
-    component: () => import('../views/BookEditView.vue'),
+    component: () => import('../views/BookFormView.vue'),
     meta: { requiresAuth: true, title: 'Chỉnh sửa Sách' },
+    beforeEnter: (to, from, next) => {
+      // Tham số :maSach sai định dạng (regex ^S\\d{4,}$) thì chuyển sang trang không tìm thấy (404)
+      if (!/^S\d{4,}$/.test(to.params.maSach)) {
+        return next({ name: 'not-found' });
+      }
+      next();
+    },
   },
   {
     path: '/publishers',
     name: 'publishers',
-    component: () => import('../views/PublishersView.vue'),
+    component: () => import('../views/PublisherListView.vue'),
     meta: { requiresAuth: true, title: 'Nhà xuất bản' },
   },
   {

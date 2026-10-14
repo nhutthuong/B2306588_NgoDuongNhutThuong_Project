@@ -46,6 +46,10 @@ http.interceptors.request.use(
       config.headers = config.headers || {};
       config.headers.Authorization = `Bearer ${authStore.accessToken}`;
     }
+    // Nếu gửi FormData (ví dụ upload ảnh bìa sách), xóa Content-Type mặc định để browser tự thêm boundary
+    if (config.data instanceof FormData) {
+      delete config.headers['Content-Type'];
+    }
     return config;
   },
   (error) => Promise.reject(error)
@@ -204,6 +208,22 @@ export const getErrorMessage = (error) => {
   if (error.message) return error.message;
 
   return 'Yêu cầu không thành công, vui lòng thử lại.';
+};
+
+/**
+ * Trích xuất danh sách lỗi chi tiết theo trường từ phản hồi 400 VALIDATION_ERROR của server
+ * @param {any} error
+ * @returns {Record<string, string>}
+ */
+export const getFieldErrors = (error) => {
+  const details = error?.response?.data?.error?.details;
+  if (!Array.isArray(details)) return {};
+  return details.reduce((acc, curr) => {
+    if (curr.field && !acc[curr.field]) {
+      acc[curr.field] = curr.message;
+    }
+    return acc;
+  }, {});
 };
 
 export default http;
