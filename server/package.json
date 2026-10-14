@@ -12,7 +12,8 @@
     "check:models": "node src/seeds/checkModels.js",
     "check:auth": "node src/seeds/checkAuth.js",
     "check:admin-auth": "node src/seeds/checkAdminAuth.js",
-    "check:userauth": "node src/seeds/checkUserAuth.js"
+    "check:userauth": "node src/seeds/checkUserAuth.js",
+    "check:publishers": "node src/seeds/checkPublishers.js"
   },
   "dependencies": {
     "bcryptjs": "^3.0.3",
