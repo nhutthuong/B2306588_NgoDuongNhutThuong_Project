@@ -308,9 +308,36 @@ export const deletePublisher = async (maNXB, admin = null, reqIp = '') => {
   return { message: 'Xóa nhà xuất bản thành công' };
 };
 
+/**
+ * Lấy danh sách nhà xuất bản công khai cho độc giả (phục vụ bộ lọc sách)
+ *
+ * @param {object} [params]
+ * @param {string} [params.search='']
+ * @returns {Promise<Array>}
+ */
+export const getPublishersForUser = async ({ search = '' } = {}) => {
+  const filter = {};
+  const searchStr = typeof search === 'string' ? search.trim() : '';
+  if (searchStr) {
+    filter.TenNXB = {
+      $regex: escapeRegex(searchStr),
+      $options: 'i',
+    };
+  }
+
+  const publishers = await NhaXuatBan.find(filter)
+    .collation({ locale: 'vi', strength: 2 })
+    .select('MaNXB TenNXB DiaChi')
+    .sort({ TenNXB: 1 })
+    .lean();
+
+  return publishers;
+};
+
 export default {
   getPublishers,
   getPublisherByCode,
+  getPublishersForUser,
   createPublisher,
   updatePublisher,
   deletePublisher,

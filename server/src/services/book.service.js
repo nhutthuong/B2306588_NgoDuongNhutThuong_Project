@@ -72,6 +72,8 @@ export const getBooks = async ({
   search = '',
   maNXB = '',
   theLoai = '',
+  namXuatBan = '',
+  conSach = false,
   daXoa = false,
   page = 1,
   limit = 10,
@@ -101,11 +103,26 @@ export const getBooks = async ({
     };
   }
 
-  // Tìm kiếm theo TenSach hoặc NguonGocTacGia bằng regex đã escapeRegex (chống ReDoS/injection)
+  // Lọc theo Năm xuất bản
+  if (namXuatBan !== undefined && namXuatBan !== null && String(namXuatBan).trim() !== '') {
+    const parsedYear = parseInt(namXuatBan, 10);
+    if (!isNaN(parsedYear)) {
+      filter.NamXuatBan = parsedYear;
+    }
+  }
+
+  // Lọc theo còn sách trong kho (SoQuyenConLai > 0)
+  const isConSach = conSach === true || String(conSach).toLowerCase() === 'true';
+  if (isConSach) {
+    filter.SoQuyenConLai = { $gt: 0 };
+  }
+
+  // Tìm kiếm theo MaSach, TenSach hoặc NguonGocTacGia bằng regex đã escapeRegex (chống ReDoS/injection)
   const searchStr = typeof search === 'string' ? search.trim() : '';
   if (searchStr) {
     const escaped = escapeRegex(searchStr);
     filter.$or = [
+      { MaSach: { $regex: escaped, $options: 'i' } },
       { TenSach: { $regex: escaped, $options: 'i' } },
       { NguonGocTacGia: { $regex: escaped, $options: 'i' } },
     ];
@@ -137,6 +154,7 @@ export const getBooks = async ({
   const items = books.map((book) => ({
     ...book,
     TenNXB: publisherMap.get(book.MaNXB) || '',
+    conSach: (book.SoQuyenConLai || 0) > 0,
   }));
 
   const meta = getPaginationMeta(total, safePage, safeLimit);
@@ -145,7 +163,7 @@ export const getBooks = async ({
 };
 
 /**
- * Lấy chi tiết một cuốn sách kèm thông tin NXB
+ * Lấy chi tiết một cuốn sách kèm thông tin NXB (dành cho Admin)
  * (sách đã xóa mềm vẫn xem được ở admin, kèm cờ DaXoa = true)
  *
  * @param {string} maSach
@@ -167,6 +185,38 @@ export const getBookByCode = async (maSach) => {
     ...book,
     TenNXB: publisher?.TenNXB || '',
     NhaXuatBan: publisher || null,
+    conSach: (book.SoQuyenConLai || 0) > 0,
+  };
+};
+
+/**
+ * Lấy chi tiết một cuốn sách cho độc giả (chỉ sách chưa xóa mềm DaXoa != true)
+ * Nếu sách không tồn tại hoặc đã xóa mềm thì trả về 404 NOT_FOUND
+ *
+ * @param {string} maSach
+ * @returns {Promise<object>}
+ */
+export const getUserBookByCode = async (maSach) => {
+  const safeMaSach = String(maSach || '').trim().toUpperCase();
+
+  const book = await Sach.findOne({
+    MaSach: safeMaSach,
+    DaXoa: { $ne: true },
+  }).lean();
+
+  if (!book) {
+    throw new ApiError(404, 'NOT_FOUND', 'Không tìm thấy sách yêu cầu');
+  }
+
+  const publisher = await NhaXuatBan.findOne({ MaNXB: book.MaNXB })
+    .select('MaNXB TenNXB DiaChi')
+    .lean();
+
+  return {
+    ...book,
+    TenNXB: publisher?.TenNXB || '',
+    NhaXuatBan: publisher || null,
+    conSach: (book.SoQuyenConLai || 0) > 0,
   };
 };
 
@@ -471,6 +521,7 @@ export const deleteBook = async (maSach, admin = null, reqIp = '') => {
 export default {
   getBooks,
   getBookByCode,
+  getUserBookByCode,
   createBook,
   updateBook,
   deleteBook,
