@@ -32,6 +32,12 @@ const routes = [
     name: 'book-detail',
     component: () => import('../views/BookDetailView.vue'),
     meta: { title: 'Chi tiết sách' },
+    beforeEnter: (to, from, next) => {
+      if (!/^S\d{4,}$/.test(to.params.maSach)) {
+        return next({ name: 'not-found' });
+      }
+      next();
+    },
   },
   {
     path: '/login',
