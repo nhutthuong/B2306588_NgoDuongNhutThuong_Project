@@ -6,7 +6,8 @@ import NhatKy from '../models/NhatKy.js';
  *
  * @param {object} params
  * @param {string} [params.msnv] - Mã số nhân viên thực hiện (hoặc req.admin?.msnv)
- * @param {string} params.hanhDong - Mã hành động (vd: 'DOI_MAT_KHAU', 'DUYET_PHIEU')
+ * @param {string} [params.maDocGia] - Mã độc giả thực hiện (cho các thao tác do độc giả thực hiện)
+ * @param {string} params.hanhDong - Mã hành động (vd: 'DOI_MAT_KHAU', 'DUYET_PHIEU', 'DANG_KY_MUON')
  * @param {string} params.doiTuong - Tên đối tượng/bảng (vd: 'NhanVien', 'TheoDoiMuonSach')
  * @param {string} [params.maDoiTuong] - Mã định danh đối tượng (vd: 'NV0001', 'PM0001')
  * @param {object} [params.chiTiet={}] - Dữ liệu chi tiết (tuyệt đối KHÔNG chứa mật khẩu, token, hash)
@@ -15,6 +16,7 @@ import NhatKy from '../models/NhatKy.js';
  */
 export const logAction = async ({
   msnv = '',
+  maDocGia = '',
   hanhDong,
   doiTuong,
   maDoiTuong = '',
@@ -22,8 +24,9 @@ export const logAction = async ({
   ip = '',
 }) => {
   try {
+    const actor = msnv || maDocGia || '';
     const logEntry = await NhatKy.create({
-      MSNV: msnv,
+      MSNV: actor,
       HanhDong: hanhDong,
       DoiTuong: doiTuong,
       MaDoiTuong: maDoiTuong,
