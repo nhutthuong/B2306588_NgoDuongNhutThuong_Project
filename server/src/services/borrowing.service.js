@@ -1,10 +1,12 @@
+import mongoose from 'mongoose';
 import TheoDoiMuonSach from '../models/TheoDoiMuonSach.js';
 import DocGia from '../models/DocGia.js';
 import Sach from '../models/Sach.js';
 import { getSettings } from './settings.service.js';
 import { logAction } from './audit.service.js';
 import { ApiError } from '../utils/ApiError.js';
-import { ACTIVE_STATUSES } from '../utils/borrowing.js';
+import { ACTIVE_STATUSES, isOverdue, soNgayTre } from '../utils/borrowing.js';
+import { getPagination, getPaginationMeta } from '../utils/pagination.js';
 
 /**
  * Lấy tóm tắt tình trạng mượn sách của một độc giả (dùng cho P3-1 và P3-2).
@@ -317,8 +319,194 @@ export const registerBorrow = async (maDocGia, maSach, meta = {}) => {
   return newPhieu.toObject();
 };
 
+/**
+ * Lấy lịch sử mượn sách của chính độc giả đang đăng nhập (GET /api/user/borrowings).
+ * Luôn lọc theo MaDocGia, hỗ trợ lọc theo TrangThai và phân trang an toàn.
+ * Kèm thông tin sách (populate) và các cờ động: isOverdue, soNgayTre.
+ *
+ * @param {string} maDocGia - Mã độc giả
+ * @param {object} [query={}] - Query params { page, limit, trangThai }
+ * @param {Date|string|number} [now=new Date()] - Thời điểm kiểm tra
+ * @returns {Promise<{ data: Array, meta: object }>}
+ */
+export const getMyBorrowings = async (maDocGia, query = {}, now = new Date()) => {
+  if (!maDocGia || typeof maDocGia !== 'string') {
+    throw ApiError.badRequest('Mã độc giả không hợp lệ', 'VALIDATION_ERROR');
+  }
+
+  const normalizedMaDocGia = String(maDocGia).trim().toUpperCase();
+  const { page = 1, limit = 10, trangThai } = query;
+  const { limit: safeLimit, skip, page: safePage } = getPagination({ page, limit });
+
+  const filter = { MaDocGia: normalizedMaDocGia };
+  if (trangThai) {
+    filter.TrangThai = trangThai;
+  }
+
+  const [items, total] = await Promise.all([
+    TheoDoiMuonSach.find(filter)
+      .sort({ createdAt: -1 })
+      .skip(skip)
+      .limit(safeLimit)
+      .populate({
+        path: 'Sach',
+        select: 'MaSach TenSach AnhBia DonGia NamXuatBan NguonGocTacGia TheLoai SoQuyenConLai',
+      })
+      .lean(),
+    TheoDoiMuonSach.countDocuments(filter),
+  ]);
+
+  const enrichedData = items.map((phieu) => ({
+    ...phieu,
+    isOverdue: isOverdue(phieu, now),
+    soNgayTre: soNgayTre(phieu, now),
+  }));
+
+  const meta = getPaginationMeta(total, safePage, safeLimit);
+
+  return {
+    data: enrichedData,
+    meta,
+  };
+};
+
+/**
+ * Lấy chi tiết một phiếu mượn của chính độc giả (GET /api/user/borrowings/:id).
+ * Chỉ xem được phiếu của chính mình; nếu không tồn tại hoặc của người khác thì trả 404 NOT_FOUND.
+ *
+ * @param {string} maDocGia - Mã độc giả
+ * @param {string} id - _id của phiếu mượn (ObjectId)
+ * @param {Date|string|number} [now=new Date()] - Thời điểm kiểm tra
+ * @returns {Promise<object>}
+ */
+export const getBorrowingDetail = async (maDocGia, id, now = new Date()) => {
+  if (!maDocGia || typeof maDocGia !== 'string') {
+    throw ApiError.badRequest('Mã độc giả không hợp lệ', 'VALIDATION_ERROR');
+  }
+
+  const normalizedMaDocGia = String(maDocGia).trim().toUpperCase();
+
+  if (!mongoose.Types.ObjectId.isValid(id)) {
+    throw ApiError.notFound('Không tìm thấy phiếu mượn');
+  }
+
+  const phieu = await TheoDoiMuonSach.findOne({
+    _id: id,
+    MaDocGia: normalizedMaDocGia,
+  })
+    .populate({
+      path: 'Sach',
+      select: 'MaSach TenSach AnhBia DonGia NamXuatBan NguonGocTacGia TheLoai SoQuyenConLai MaNXB',
+      populate: {
+        path: 'NhaXuatBan',
+        select: 'MaNXB TenNXB DiaChi',
+      },
+    })
+    .lean();
+
+  if (!phieu) {
+    throw ApiError.notFound('Không tìm thấy phiếu mượn');
+  }
+
+  return {
+    ...phieu,
+    isOverdue: isOverdue(phieu, now),
+    soNgayTre: soNgayTre(phieu, now),
+  };
+};
+
+/**
+ * Hủy phiếu mượn sách bởi độc giả (PATCH /api/user/borrowings/:id/cancel).
+ * Quy tắc:
+ * - Chỉ cho phép hủy khi phiếu đang ở trạng thái 'ChoDuyet' hoặc 'DaDuyet'.
+ * - Trạng thái khác (DangMuon, DaTra, TuChoi, DaHuy) -> ném 409 INVALID_STATE.
+ * - Phiếu không tồn tại hoặc của độc giả khác -> ném 404 NOT_FOUND.
+ * - Hủy nguyên tử: chuyển trạng thái sang 'DaHuy'.
+ * - Hoàn kho: Nếu hủy từ 'DaDuyet' thì hoàn lại 1 quyển vào SoQuyenConLai của Sách (nguyên tử).
+ *   Nếu hủy từ 'ChoDuyet' thì không tác động kho.
+ * - Ghi NhatKy qua audit.service với hành động 'HUY_PHIEU'.
+ *
+ * @param {string} maDocGia - Mã độc giả
+ * @param {string} id - _id của phiếu mượn
+ * @param {object} [meta={}] - Dữ liệu kèm theo ({ ip })
+ * @returns {Promise<object>} Document phiếu mượn sau khi hủy
+ */
+export const cancelBorrowing = async (maDocGia, id, meta = {}) => {
+  if (!maDocGia || typeof maDocGia !== 'string') {
+    throw ApiError.badRequest('Mã độc giả không hợp lệ', 'VALIDATION_ERROR');
+  }
+
+  const normalizedMaDocGia = String(maDocGia).trim().toUpperCase();
+
+  if (!mongoose.Types.ObjectId.isValid(id)) {
+    throw ApiError.notFound('Không tìm thấy phiếu mượn');
+  }
+
+  const phieu = await TheoDoiMuonSach.findOne({
+    _id: id,
+    MaDocGia: normalizedMaDocGia,
+  });
+
+  if (!phieu) {
+    throw ApiError.notFound('Không tìm thấy phiếu mượn');
+  }
+
+  if (phieu.TrangThai !== 'ChoDuyet' && phieu.TrangThai !== 'DaDuyet') {
+    throw new ApiError(
+      409,
+      'INVALID_STATE',
+      'Chỉ có thể hủy phiếu mượn ở trạng thái Chờ duyệt hoặc Đã duyệt'
+    );
+  }
+
+  const oldStatus = phieu.TrangThai;
+
+  // Cập nhật trạng thái phiếu nguyên tử (chống đua chuyển trạng thái đồng thời)
+  const updated = await TheoDoiMuonSach.findOneAndUpdate(
+    { _id: id, MaDocGia: normalizedMaDocGia, TrangThai: oldStatus },
+    { $set: { TrangThai: 'DaHuy' } },
+    { new: true }
+  );
+
+  if (!updated) {
+    throw new ApiError(
+      409,
+      'INVALID_STATE',
+      'Trạng thái phiếu mượn đã bị thay đổi, không thể hủy'
+    );
+  }
+
+  // Tác động kho: Hoàn kho (+1 SoQuyenConLai) nếu hủy từ DaDuyet
+  if (oldStatus === 'DaDuyet') {
+    await Sach.updateOne(
+      { MaSach: updated.MaSach },
+      { $inc: { SoQuyenConLai: 1 } }
+    );
+  }
+
+  // Ghi nhật ký qua audit.service
+  await logAction({
+    maDocGia: normalizedMaDocGia,
+    hanhDong: 'HUY_PHIEU',
+    doiTuong: 'TheoDoiMuonSach',
+    maDoiTuong: String(updated._id),
+    chiTiet: {
+      MaDocGia: normalizedMaDocGia,
+      MaSach: updated.MaSach,
+      TrangThaiCu: oldStatus,
+      TrangThaiMoi: 'DaHuy',
+    },
+    ip: meta?.ip || '',
+  });
+
+  return updated.toObject();
+};
+
 export default {
   getBorrowSummary,
   checkEligibility,
   registerBorrow,
+  getMyBorrowings,
+  getBorrowingDetail,
+  cancelBorrowing,
 };

@@ -16,7 +16,8 @@
     "check:publishers": "node src/seeds/checkPublishers.js",
     "check:books": "node src/seeds/checkBooks.js",
     "check:userbooks": "node src/seeds/checkUserBooks.js",
-    "check:borrowing": "node src/seeds/checkBorrowing.js"
+    "check:borrowing": "node src/seeds/checkBorrowing.js",
+    "check:userborrowings": "node src/seeds/checkUserBorrowings.js"
   },
   "dependencies": {
     "bcryptjs": "^3.0.3",
