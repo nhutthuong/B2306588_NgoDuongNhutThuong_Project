@@ -7,6 +7,7 @@ import { logAction } from './audit.service.js';
 import { ApiError } from '../utils/ApiError.js';
 import { ACTIVE_STATUSES, isOverdue, soNgayTre } from '../utils/borrowing.js';
 import { getPagination, getPaginationMeta } from '../utils/pagination.js';
+import { escapeRegex } from '../utils/escapeRegex.js';
 
 /**
  * Lấy tóm tắt tình trạng mượn sách của một độc giả (dùng cho P3-1 và P3-2).
@@ -502,6 +503,498 @@ export const cancelBorrowing = async (maDocGia, id, meta = {}) => {
   return updated.toObject();
 };
 
+/**
+ * Lấy danh sách phiếu mượn toàn hệ thống dành cho nhân viên/admin (GET /api/admin/borrowings).
+ * Hỗ trợ các bộ lọc: trangThai, maDocGia, maSach, quaHan=true, tuNgay, denNgay, trangThaiPhat.
+ * Phân trang an toàn, sắp xếp -createdAt mặc định.
+ * Kèm thông tin độc giả, sách, nhân viên duyệt/giao/nhận trả và các cờ động: isOverdue, soNgayTre.
+ *
+ * @param {object} [query={}] - Tham số truy vấn
+ * @param {Date|string|number} [now=new Date()] - Thời điểm kiểm tra
+ * @returns {Promise<{ data: Array, meta: object }>}
+ */
+export const adminListBorrowings = async (query = {}, now = new Date()) => {
+  const {
+    trangThai,
+    maDocGia,
+    maSach,
+    quaHan,
+    tuNgay,
+    denNgay,
+    trangThaiPhat,
+    page = 1,
+    limit = 10,
+  } = query;
+
+  const { limit: safeLimit, skip, page: safePage } = getPagination({ page, limit });
+
+  const filter = {};
+
+  if (trangThai) {
+    filter.TrangThai = trangThai;
+  }
+
+  if (maDocGia) {
+    filter.MaDocGia = new RegExp(escapeRegex(String(maDocGia).trim()), 'i');
+  }
+
+  if (maSach) {
+    filter.MaSach = new RegExp(escapeRegex(String(maSach).trim()), 'i');
+  }
+
+  const currentTime = new Date(now);
+
+  // Lọc phiếu quá hạn: TrangThai = 'DangMuon' và HanTra < now
+  if (quaHan === true || quaHan === 'true') {
+    filter.TrangThai = 'DangMuon';
+    filter.HanTra = { $ne: null, $lt: currentTime };
+  }
+
+  // Lọc theo khoảng ngày đăng ký / tạo phiếu
+  if (tuNgay || denNgay) {
+    filter.createdAt = {};
+    if (tuNgay) {
+      filter.createdAt.$gte = new Date(tuNgay);
+    }
+    if (denNgay) {
+      const endOfDay = new Date(denNgay);
+      endOfDay.setHours(23, 59, 59, 999);
+      filter.createdAt.$lte = endOfDay;
+    }
+  }
+
+  if (trangThaiPhat) {
+    filter.TrangThaiPhat = trangThaiPhat;
+  }
+
+  const [items, total] = await Promise.all([
+    TheoDoiMuonSach.find(filter)
+      .sort({ createdAt: -1 })
+      .skip(skip)
+      .limit(safeLimit)
+      .populate({
+        path: 'DocGia',
+        select: 'MaDocGia HoLot Ten Email DienThoai TrangThai',
+      })
+      .populate({
+        path: 'Sach',
+        select: 'MaSach TenSach AnhBia DonGia SoQuyenConLai',
+      })
+      .populate({
+        path: 'NhanVienDuyet',
+        select: 'MSNV HoTenNV ChucVu',
+      })
+      .populate({
+        path: 'NhanVienGiao',
+        select: 'MSNV HoTenNV ChucVu',
+      })
+      .populate({
+        path: 'NhanVienNhanTra',
+        select: 'MSNV HoTenNV ChucVu',
+      })
+      .lean(),
+    TheoDoiMuonSach.countDocuments(filter),
+  ]);
+
+  const enrichedData = items.map((phieu) => ({
+    ...phieu,
+    isOverdue: isOverdue(phieu, now),
+    soNgayTre: soNgayTre(phieu, now),
+  }));
+
+  const meta = getPaginationMeta(total, safePage, safeLimit);
+
+  return {
+    data: enrichedData,
+    meta,
+  };
+};
+
+/**
+ * Lấy chi tiết đầy đủ của một phiếu mượn dành cho nhân viên (GET /api/admin/borrowings/:id).
+ *
+ * @param {string} id - _id phiếu mượn (ObjectId)
+ * @param {Date|string|number} [now=new Date()] - Thời điểm kiểm tra
+ * @returns {Promise<object>}
+ */
+export const adminGetBorrowingDetail = async (id, now = new Date()) => {
+  if (!mongoose.Types.ObjectId.isValid(id)) {
+    throw ApiError.notFound('Không tìm thấy phiếu mượn');
+  }
+
+  const phieu = await TheoDoiMuonSach.findById(id)
+    .populate({
+      path: 'DocGia',
+      select: 'MaDocGia HoLot Ten Email DienThoai DiaChi TrangThai',
+    })
+    .populate({
+      path: 'Sach',
+      select: 'MaSach TenSach AnhBia DonGia NamXuatBan NguonGocTacGia TheLoai SoQuyenConLai MaNXB',
+      populate: {
+        path: 'NhaXuatBan',
+        select: 'MaNXB TenNXB DiaChi',
+      },
+    })
+    .populate({
+      path: 'NhanVienDuyet',
+      select: 'MSNV HoTenNV ChucVu',
+    })
+    .populate({
+      path: 'NhanVienGiao',
+      select: 'MSNV HoTenNV ChucVu',
+    })
+    .populate({
+      path: 'NhanVienNhanTra',
+      select: 'MSNV HoTenNV ChucVu',
+    })
+    .lean();
+
+  if (!phieu) {
+    throw ApiError.notFound('Không tìm thấy phiếu mượn');
+  }
+
+  return {
+    ...phieu,
+    isOverdue: isOverdue(phieu, now),
+    soNgayTre: soNgayTre(phieu, now),
+  };
+};
+
+/**
+ * Duyệt phiếu mượn sách (PATCH /api/admin/borrowings/:id/approve).
+ * Chuyển trạng thái: ChoDuyet -> DaDuyet.
+ * Quy tắc:
+ * 1. Phiếu phải ở trạng thái 'ChoDuyet', nếu khác -> 409 INVALID_STATE.
+ * 2. Độc giả phải còn HoatDong (nếu BiKhoa -> 403 ACCOUNT_LOCKED).
+ * 3. Trừ kho nguyên tử 1 quyển: Sach.findOneAndUpdate({ MaSach, SoQuyenConLai: { $gt: 0 } }, { $inc: { SoQuyenConLai: -1 } }).
+ *    Nếu hết sách -> ném 409 OUT_OF_STOCK.
+ * 4. Cập nhật phiếu mượn nguyên tử: set TrangThai 'DaDuyet', NgayDuyet, HanNhanSach, MSNVDuyet.
+ *    Nếu cập nhật phiếu thất bại (chống đua trạng thái) -> hoàn kho bù trừ (compensation) và ném 409 INVALID_STATE.
+ * 5. Ghi NhatKy (DUYET_PHIEU).
+ *
+ * @param {string} id - _id phiếu mượn
+ * @param {string} msnv - Mã số nhân viên duyệt
+ * @param {object} [meta={}] - Dữ liệu kèm theo ({ now, ip })
+ * @returns {Promise<object>}
+ */
+export const adminApproveBorrowing = async (id, msnv, meta = {}) => {
+  if (!mongoose.Types.ObjectId.isValid(id)) {
+    throw ApiError.notFound('Không tìm thấy phiếu mượn');
+  }
+
+  const phieu = await TheoDoiMuonSach.findById(id);
+  if (!phieu) {
+    throw ApiError.notFound('Không tìm thấy phiếu mượn');
+  }
+
+  if (phieu.TrangThai !== 'ChoDuyet') {
+    throw new ApiError(
+      409,
+      'INVALID_STATE',
+      'Chỉ có thể duyệt phiếu mượn ở trạng thái Chờ duyệt'
+    );
+  }
+
+  // Kiểm tra trạng thái độc giả tại thời điểm duyệt
+  const docGia = await DocGia.findOne({ MaDocGia: phieu.MaDocGia }).lean();
+  if (!docGia) {
+    throw ApiError.notFound('Không tìm thấy thông tin độc giả');
+  }
+  if (docGia.TrangThai === 'BiKhoa') {
+    throw new ApiError(
+      403,
+      'ACCOUNT_LOCKED',
+      'Tài khoản độc giả đang bị khóa, không thể duyệt phiếu mượn'
+    );
+  }
+
+  // 1. Trừ kho sách nguyên tử (giữ 1 quyển)
+  const updatedBook = await Sach.findOneAndUpdate(
+    { MaSach: phieu.MaSach, SoQuyenConLai: { $gt: 0 } },
+    { $inc: { SoQuyenConLai: -1 } },
+    { new: true }
+  );
+
+  if (!updatedBook) {
+    throw new ApiError(
+      409,
+      'OUT_OF_STOCK',
+      'Sách hiện đã hết quyển có sẵn để duyệt mượn'
+    );
+  }
+
+  const now = meta?.now ? new Date(meta.now) : new Date();
+  const settings = await getSettings();
+  const hanNhanSach = new Date(now.getTime() + settings.HanNhanSach * 24 * 60 * 60 * 1000);
+
+  // 2. Đổi trạng thái phiếu mượn nguyên tử
+  const updatedPhieu = await TheoDoiMuonSach.findOneAndUpdate(
+    { _id: id, TrangThai: 'ChoDuyet' },
+    {
+      $set: {
+        TrangThai: 'DaDuyet',
+        NgayDuyet: now,
+        HanNhanSach: hanNhanSach,
+        MSNVDuyet: msnv,
+      },
+    },
+    { new: true }
+  );
+
+  // Bù trừ nếu cập nhật phiếu thất bại (tránh rò rỉ số lượng sách trong kho)
+  if (!updatedPhieu) {
+    await Sach.updateOne(
+      { MaSach: phieu.MaSach },
+      { $inc: { SoQuyenConLai: 1 } }
+    );
+    throw new ApiError(
+      409,
+      'INVALID_STATE',
+      'Trạng thái phiếu mượn đã bị thay đổi, không thể duyệt'
+    );
+  }
+
+  // 3. Ghi nhật ký qua audit.service
+  await logAction({
+    msnv,
+    hanhDong: 'DUYET_PHIEU',
+    doiTuong: 'TheoDoiMuonSach',
+    maDoiTuong: String(updatedPhieu._id),
+    chiTiet: {
+      MaDocGia: updatedPhieu.MaDocGia,
+      MaSach: updatedPhieu.MaSach,
+      NgayDuyet: updatedPhieu.NgayDuyet,
+      HanNhanSach: updatedPhieu.HanNhanSach,
+    },
+    ip: meta?.ip || '',
+  });
+
+  return updatedPhieu.toObject();
+};
+
+/**
+ * Từ chối phiếu mượn sách (PATCH /api/admin/borrowings/:id/reject).
+ * Chuyển trạng thái: ChoDuyet -> TuChoi.
+ * Bắt buộc có lý do từ chối (LyDoTuChoi).
+ *
+ * @param {string} id - _id phiếu mượn
+ * @param {string} msnv - Mã số nhân viên từ chối
+ * @param {string} lyDoTuChoi - Lý do từ chối
+ * @param {object} [meta={}] - Dữ liệu kèm theo ({ now, ip })
+ * @returns {Promise<object>}
+ */
+export const adminRejectBorrowing = async (id, msnv, lyDoTuChoi, meta = {}) => {
+  if (!mongoose.Types.ObjectId.isValid(id)) {
+    throw ApiError.notFound('Không tìm thấy phiếu mượn');
+  }
+
+  if (!lyDoTuChoi || typeof lyDoTuChoi !== 'string' || !lyDoTuChoi.trim()) {
+    throw ApiError.badRequest('Lý do từ chối là bắt buộc', 'VALIDATION_ERROR');
+  }
+
+  const phieu = await TheoDoiMuonSach.findById(id);
+  if (!phieu) {
+    throw ApiError.notFound('Không tìm thấy phiếu mượn');
+  }
+
+  if (phieu.TrangThai !== 'ChoDuyet') {
+    throw new ApiError(
+      409,
+      'INVALID_STATE',
+      'Chỉ có thể từ chối phiếu mượn ở trạng thái Chờ duyệt'
+    );
+  }
+
+  const now = meta?.now ? new Date(meta.now) : new Date();
+
+  const updatedPhieu = await TheoDoiMuonSach.findOneAndUpdate(
+    { _id: id, TrangThai: 'ChoDuyet' },
+    {
+      $set: {
+        TrangThai: 'TuChoi',
+        LyDoTuChoi: lyDoTuChoi.trim(),
+        NgayDuyet: now,
+        MSNVDuyet: msnv,
+      },
+    },
+    { new: true }
+  );
+
+  if (!updatedPhieu) {
+    throw new ApiError(
+      409,
+      'INVALID_STATE',
+      'Trạng thái phiếu mượn đã bị thay đổi, không thể từ chối'
+    );
+  }
+
+  // Ghi nhật ký qua audit.service
+  await logAction({
+    msnv,
+    hanhDong: 'TU_CHOI_PHIEU',
+    doiTuong: 'TheoDoiMuonSach',
+    maDoiTuong: String(updatedPhieu._id),
+    chiTiet: {
+      MaDocGia: updatedPhieu.MaDocGia,
+      MaSach: updatedPhieu.MaSach,
+      LyDoTuChoi: updatedPhieu.LyDoTuChoi,
+    },
+    ip: meta?.ip || '',
+  });
+
+  return updatedPhieu.toObject();
+};
+
+/**
+ * Giao sách thực tế cho độc giả (PATCH /api/admin/borrowings/:id/handover).
+ * Chuyển trạng thái: DaDuyet -> DangMuon.
+ * Thiết lập: NgayMuon = now, HanTra = now + SoNgayMuon ngày, MSNVGiao = msnv.
+ *
+ * @param {string} id - _id phiếu mượn
+ * @param {string} msnv - Mã số nhân viên giao sách
+ * @param {object} [meta={}] - Dữ liệu kèm theo ({ now, ip })
+ * @returns {Promise<object>}
+ */
+export const adminHandoverBorrowing = async (id, msnv, meta = {}) => {
+  if (!mongoose.Types.ObjectId.isValid(id)) {
+    throw ApiError.notFound('Không tìm thấy phiếu mượn');
+  }
+
+  const phieu = await TheoDoiMuonSach.findById(id);
+  if (!phieu) {
+    throw ApiError.notFound('Không tìm thấy phiếu mượn');
+  }
+
+  if (phieu.TrangThai !== 'DaDuyet') {
+    throw new ApiError(
+      409,
+      'INVALID_STATE',
+      'Chỉ có thể giao sách cho phiếu mượn ở trạng thái Đã duyệt'
+    );
+  }
+
+  const now = meta?.now ? new Date(meta.now) : new Date();
+
+  // Kiểm tra nếu phiếu đã quá hạn nhận sách
+  if (phieu.HanNhanSach && new Date(phieu.HanNhanSach).getTime() < now.getTime()) {
+    throw new ApiError(
+      409,
+      'INVALID_STATE',
+      'Phiếu mượn đã quá hạn nhận sách, không thể thực hiện giao sách'
+    );
+  }
+
+  const settings = await getSettings();
+  const hanTra = new Date(now.getTime() + settings.SoNgayMuon * 24 * 60 * 60 * 1000);
+
+  const updatedPhieu = await TheoDoiMuonSach.findOneAndUpdate(
+    { _id: id, TrangThai: 'DaDuyet' },
+    {
+      $set: {
+        TrangThai: 'DangMuon',
+        NgayMuon: now,
+        HanTra: hanTra,
+        MSNVGiao: msnv,
+      },
+    },
+    { new: true }
+  );
+
+  if (!updatedPhieu) {
+    throw new ApiError(
+      409,
+      'INVALID_STATE',
+      'Trạng thái phiếu mượn đã bị thay đổi, không thể giao sách'
+    );
+  }
+
+  // Ghi nhật ký qua audit.service
+  await logAction({
+    msnv,
+    hanhDong: 'GIAO_SACH',
+    doiTuong: 'TheoDoiMuonSach',
+    maDoiTuong: String(updatedPhieu._id),
+    chiTiet: {
+      MaDocGia: updatedPhieu.MaDocGia,
+      MaSach: updatedPhieu.MaSach,
+      NgayMuon: updatedPhieu.NgayMuon,
+      HanTra: updatedPhieu.HanTra,
+    },
+    ip: meta?.ip || '',
+  });
+
+  return updatedPhieu.toObject();
+};
+
+/**
+ * Hủy phiếu mượn thay độc giả bởi nhân viên/admin (PATCH /api/admin/borrowings/:id/cancel).
+ *
+ * @param {string} id - _id phiếu mượn
+ * @param {string} msnv - Mã số nhân viên thực hiện hủy
+ * @param {object} [meta={}] - Dữ liệu kèm theo ({ ip })
+ * @returns {Promise<object>}
+ */
+export const adminCancelBorrowing = async (id, msnv, meta = {}) => {
+  if (!mongoose.Types.ObjectId.isValid(id)) {
+    throw ApiError.notFound('Không tìm thấy phiếu mượn');
+  }
+
+  const phieu = await TheoDoiMuonSach.findById(id);
+  if (!phieu) {
+    throw ApiError.notFound('Không tìm thấy phiếu mượn');
+  }
+
+  if (phieu.TrangThai !== 'ChoDuyet' && phieu.TrangThai !== 'DaDuyet') {
+    throw new ApiError(
+      409,
+      'INVALID_STATE',
+      'Chỉ có thể hủy phiếu mượn ở trạng thái Chờ duyệt hoặc Đã duyệt'
+    );
+  }
+
+  const oldStatus = phieu.TrangThai;
+
+  const updatedPhieu = await TheoDoiMuonSach.findOneAndUpdate(
+    { _id: id, TrangThai: oldStatus },
+    { $set: { TrangThai: 'DaHuy' } },
+    { new: true }
+  );
+
+  if (!updatedPhieu) {
+    throw new ApiError(
+      409,
+      'INVALID_STATE',
+      'Trạng thái phiếu mượn đã bị thay đổi, không thể hủy'
+    );
+  }
+
+  // Nếu hủy từ DaDuyet: hoàn kho (+1 SoQuyenConLai)
+  if (oldStatus === 'DaDuyet') {
+    await Sach.updateOne(
+      { MaSach: updatedPhieu.MaSach },
+      { $inc: { SoQuyenConLai: 1 } }
+    );
+  }
+
+  // Ghi nhật ký qua audit.service
+  await logAction({
+    msnv,
+    hanhDong: 'HUY_PHIEU',
+    doiTuong: 'TheoDoiMuonSach',
+    maDoiTuong: String(updatedPhieu._id),
+    chiTiet: {
+      MaDocGia: updatedPhieu.MaDocGia,
+      MaSach: updatedPhieu.MaSach,
+      TrangThaiCu: oldStatus,
+      TrangThaiMoi: 'DaHuy',
+      NguoiHuy: 'NhanVien',
+    },
+    ip: meta?.ip || '',
+  });
+
+  return updatedPhieu.toObject();
+};
+
 export default {
   getBorrowSummary,
   checkEligibility,
@@ -509,4 +1002,10 @@ export default {
   getMyBorrowings,
   getBorrowingDetail,
   cancelBorrowing,
+  adminListBorrowings,
+  adminGetBorrowingDetail,
+  adminApproveBorrowing,
+  adminRejectBorrowing,
+  adminHandoverBorrowing,
+  adminCancelBorrowing,
 };
