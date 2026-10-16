@@ -3,9 +3,11 @@ import { ref, computed, onMounted, watch } from 'vue';
 import { useRoute, useRouter, RouterLink } from 'vue-router';
 import { useAuthStore } from '../stores/auth.js';
 import bookApi from '../api/book.api.js';
+import borrowingApi from '../api/borrowing.api.js';
 import { getErrorMessage } from '../api/http.js';
 import { formatCurrency, getCoverUrl } from '../utils/format.js';
 import LoadingSpinner from '../components/LoadingSpinner.vue';
+import ConfirmModal from '../components/ConfirmModal.vue';
 
 const route = useRoute();
 const router = useRouter();
@@ -17,13 +19,70 @@ const notFound = ref(false);
 const errorMessage = ref('');
 const isImageError = ref(false);
 
+const confirmModalRef = ref(null);
+const isBorrowing = ref(false);
+const borrowSuccess = ref(false);
+const borrowError = ref('');
+
 const maSach = computed(() => {
   return route.params.maSach ? String(route.params.maSach).trim().toUpperCase() : '';
 });
 
-const borrowNotice = ref('');
+/**
+ * Trích xuất thông điệp lỗi nghiệp vụ tiếng Việt chi tiết khi mượn sách
+ */
+const getBorrowErrorMessage = (error) => {
+  const code = error?.response?.data?.error?.code;
+  switch (code) {
+    case 'ACCOUNT_LOCKED':
+      return 'Tài khoản của bạn đang bị khóa, không thể đăng ký mượn sách.';
+    case 'HAS_OVERDUE':
+      return 'Bạn đang có sách mượn quá hạn chưa trả. Vui lòng hoàn trả sách trước khi đăng ký mượn tiếp.';
+    case 'HAS_UNPAID_FINE':
+      return 'Bạn đang có khoản tiền phạt chưa thanh toán. Vui lòng đến thư viện hoàn tất đóng phạt trước khi mượn tiếp.';
+    case 'BORROW_LIMIT_EXCEEDED':
+      return 'Bạn đã đạt giới hạn mượn sách tối đa (tối đa 5 cuốn đang chiếm chỗ cùng lúc).';
+    case 'ALREADY_BORROWING':
+      return 'Bạn đang có phiếu mượn cuốn sách này (ở trạng thái chờ duyệt, đã duyệt hoặc đang mượn).';
+    case 'OUT_OF_STOCK':
+      return 'Sách tạm thời hết trong kho. Vui lòng thử lại sau.';
+    case 'NOT_FOUND':
+      return 'Không tìm thấy thông tin sách hoặc sách đã ngừng phục vụ.';
+    default:
+      return getErrorMessage(error);
+  }
+};
+
 const handleBorrowClick = () => {
-  borrowNotice.value = 'Chức năng gửi phiếu đăng ký mượn trực tuyến sẽ được kích hoạt tại Phase 3 (P3-6). Vui lòng quay lại sau!';
+  borrowSuccess.value = false;
+  borrowError.value = '';
+  if (confirmModalRef.value) {
+    confirmModalRef.value.show();
+  }
+};
+
+const handleConfirmBorrow = async () => {
+  if (!book.value?.MaSach) return;
+
+  isBorrowing.value = true;
+  borrowError.value = '';
+
+  try {
+    await borrowingApi.create(book.value.MaSach);
+    borrowSuccess.value = true;
+    if (confirmModalRef.value) {
+      confirmModalRef.value.hide();
+    }
+    // Tải lại thông tin sách để cập nhật số lượng tồn kho hiển thị
+    fetchBookDetail();
+  } catch (error) {
+    borrowError.value = getBorrowErrorMessage(error);
+    if (confirmModalRef.value) {
+      confirmModalRef.value.hide();
+    }
+  } finally {
+    isBorrowing.value = false;
+  }
 };
 
 /**
@@ -254,11 +313,31 @@ const handleImageError = () => {
             </div>
           </div>
 
-          <!-- Thông báo tạm thời khi bấm mượn sách -->
-          <div v-if="borrowNotice" class="alert alert-info alert-dismissible fade show rounded-3 small py-2 px-3 mb-4" role="alert">
-            <i class="bi bi-info-circle me-1"></i>
-            {{ borrowNotice }}
-            <button type="button" class="btn-close py-2" @click="borrowNotice = ''" aria-label="Đóng"></button>
+          <!-- Thông báo đăng ký mượn thành công -->
+          <div v-if="borrowSuccess" class="alert alert-success alert-dismissible fade show rounded-3 small py-3 px-4 mb-4 shadow-sm" role="alert">
+            <div class="d-flex align-items-start gap-2">
+              <i class="bi bi-check-circle-fill text-success fs-5"></i>
+              <div class="flex-grow-1">
+                <div class="fw-bold fs-6 mb-1">Đăng ký mượn sách thành công!</div>
+                <p class="mb-2">Yêu cầu mượn cuốn <strong>{{ book.TenSach }}</strong> đã được gửi lên hệ thống và đang ở trạng thái <strong>Chờ duyệt</strong>. Sau khi thủ thư phê duyệt, bạn sẽ có 2 ngày để đến thư viện nhận sách.</p>
+                <RouterLink to="/my-borrowings" class="btn btn-success btn-sm rounded-pill px-3">
+                  <i class="bi bi-journal-check me-1"></i> Đến trang Lịch sử mượn
+                </RouterLink>
+              </div>
+              <button type="button" class="btn-close" @click="borrowSuccess = false" aria-label="Đóng"></button>
+            </div>
+          </div>
+
+          <!-- Thông báo lỗi đăng ký mượn -->
+          <div v-if="borrowError" class="alert alert-danger alert-dismissible fade show rounded-3 small py-3 px-4 mb-4 shadow-sm" role="alert">
+            <div class="d-flex align-items-center gap-2">
+              <i class="bi bi-exclamation-triangle-fill text-danger fs-5"></i>
+              <div class="flex-grow-1">
+                <div class="fw-bold mb-1">Không thể gửi yêu cầu mượn sách</div>
+                <div>{{ borrowError }}</div>
+              </div>
+              <button type="button" class="btn-close" @click="borrowError = ''" aria-label="Đóng"></button>
+            </div>
           </div>
 
           <!-- Khối hành động: Đăng ký mượn & Quay lại -->
@@ -301,15 +380,50 @@ const handleImageError = () => {
                 v-else
                 type="button"
                 class="btn btn-primary btn-sm px-4 rounded-pill shadow-sm"
+                :disabled="isBorrowing"
                 @click="handleBorrowClick"
               >
-                <i class="bi bi-journal-plus me-1"></i> Đăng ký mượn sách
+                <span
+                  v-if="isBorrowing"
+                  class="spinner-border spinner-border-sm me-1"
+                  role="status"
+                  aria-hidden="true"
+                ></span>
+                <i v-else class="bi bi-journal-plus me-1"></i>
+                <span>{{ isBorrowing ? 'Đang xử lý...' : 'Đăng ký mượn sách' }}</span>
               </button>
             </div>
           </div>
         </div>
       </div>
     </div>
+
+    <!-- Modal xác nhận đăng ký mượn -->
+    <ConfirmModal
+      v-if="book"
+      ref="confirmModalRef"
+      title="Xác nhận đăng ký mượn sách"
+      confirm-text="Xác nhận mượn"
+      cancel-text="Để sau"
+      confirm-btn-class="btn-primary"
+      icon="bi-journal-plus text-primary"
+      :is-processing="isBorrowing"
+      @confirm="handleConfirmBorrow"
+    >
+      <div class="mb-3">
+        Bạn có chắc chắn muốn đăng ký mượn cuốn sách sau đây?
+      </div>
+      <div class="card bg-light border-0 rounded-3 p-3 mb-3">
+        <div class="fw-bold text-dark fs-6">{{ book.TenSach }}</div>
+        <div class="small text-secondary mb-1">Mã sách: <span class="font-monospace text-dark">{{ book.MaSach }}</span></div>
+        <div class="small text-secondary mb-1">Tác giả / Nguồn gốc: {{ book.NguonGocTacGia }}</div>
+        <div class="small text-secondary">Đơn giá sách: <span class="text-primary fw-semibold">{{ formatCurrency(book.DonGia) }}</span></div>
+      </div>
+      <div class="alert alert-info py-2 px-3 small mb-0 rounded-3">
+        <i class="bi bi-info-circle me-1"></i>
+        <strong>Quy định mượn:</strong> Phiếu mượn sẽ có hiệu lực nhận trong 2 ngày sau khi được duyệt. Thời hạn mượn sách tối đa là 14 ngày kể từ ngày nhận sách thực tế.
+      </div>
+    </ConfirmModal>
   </div>
 </template>
 
