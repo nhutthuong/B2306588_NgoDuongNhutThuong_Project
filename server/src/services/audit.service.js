@@ -17,6 +17,7 @@ import NhatKy from '../models/NhatKy.js';
 export const logAction = async ({
   msnv = '',
   maDocGia = '',
+  tacNhan = '',
   hanhDong,
   doiTuong,
   maDoiTuong = '',
@@ -24,7 +25,7 @@ export const logAction = async ({
   ip = '',
 }) => {
   try {
-    const actor = msnv || maDocGia || '';
+    const actor = tacNhan || msnv || maDocGia || '';
     const logEntry = await NhatKy.create({
       MSNV: actor,
       HanhDong: hanhDong,

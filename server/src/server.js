@@ -1,6 +1,7 @@
 import app from './app.js';
 import env from './config/env.js';
 import { connectDB, disconnectDB } from './config/db.js';
+import { startScheduler, stopScheduler } from './services/scheduler.js';
 
 let server;
 
@@ -13,11 +14,17 @@ const startServer = async () => {
     console.log(`Server đang chạy tại http://localhost:${env.PORT} [${env.NODE_ENV}]`);
     console.log(`Kiểm tra trạng thái: http://localhost:${env.PORT}/api/health`);
   });
+
+  // Khởi động bộ lập lịch quét phiếu hết hạn nhận sách
+  startScheduler();
 };
 
 // Xử lý tắt server an toàn (Graceful shutdown)
 const gracefulShutdown = async (signal) => {
   console.log(`\nNhận tín hiệu ${signal}. Đang đóng server...`);
+
+  // Dừng scheduler trước khi đóng server
+  await stopScheduler();
 
   if (server) {
     server.close(async () => {

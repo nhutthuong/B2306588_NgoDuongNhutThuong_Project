@@ -9,6 +9,7 @@ import { ACTIVE_STATUSES, isOverdue, soNgayTre } from '../utils/borrowing.js';
 import { getPagination, getPaginationMeta } from '../utils/pagination.js';
 import { escapeRegex } from '../utils/escapeRegex.js';
 import { tinhTongPhat } from './fine.service.js';
+import { sweepIfDue } from './expiry.service.js';
 
 /**
  * Lấy tóm tắt tình trạng mượn sách của một độc giả (dùng cho P3-1 và P3-2).
@@ -26,6 +27,9 @@ import { tinhTongPhat } from './fine.service.js';
  * }>}
  */
 export const getBorrowSummary = async (maDocGia, now = new Date()) => {
+  // Quét lười (lazy-check) các phiếu hết hạn nhận sách (giới hạn tần suất 60s)
+  await sweepIfDue({ now });
+
   if (!maDocGia || typeof maDocGia !== 'string') {
     throw ApiError.badRequest('Mã độc giả không hợp lệ', 'VALIDATION_ERROR');
   }
@@ -126,6 +130,9 @@ export const getBorrowSummary = async (maDocGia, now = new Date()) => {
  * @returns {Promise<{ eligible: boolean, reason: string|null, code?: string, summary: object|null }>}
  */
 export const checkEligibility = async (maDocGia, now = new Date(), options = {}) => {
+  // Quét lười giải phóng chỗ nếu có phiếu DaDuyet quá hạn nhận sách
+  await sweepIfDue({ now });
+
   const { throwOnError = true } = options;
 
   if (!maDocGia || typeof maDocGia !== 'string') {
@@ -332,6 +339,9 @@ export const registerBorrow = async (maDocGia, maSach, meta = {}) => {
  * @returns {Promise<{ data: Array, meta: object }>}
  */
 export const getMyBorrowings = async (maDocGia, query = {}, now = new Date()) => {
+  // Quét lười cập nhật trạng thái mới nhất cho độc giả
+  await sweepIfDue({ now });
+
   if (!maDocGia || typeof maDocGia !== 'string') {
     throw ApiError.badRequest('Mã độc giả không hợp lệ', 'VALIDATION_ERROR');
   }
@@ -523,6 +533,9 @@ export const cancelBorrowing = async (maDocGia, id, meta = {}) => {
  * @returns {Promise<{ data: Array, meta: object }>}
  */
 export const adminListBorrowings = async (query = {}, now = new Date()) => {
+  // Quét lười cập nhật danh sách phiếu phía admin
+  await sweepIfDue({ now });
+
   const {
     trangThai,
     maDocGia,
@@ -892,20 +905,61 @@ export const adminHandoverBorrowing = async (id, msnv, meta = {}) => {
 
   const now = meta?.now ? new Date(meta.now) : new Date();
 
-  // Kiểm tra nếu phiếu đã quá hạn nhận sách
+  // Kiểm tra tức thời (không phụ thuộc lịch): Nếu phiếu đã quá hạn nhận sách thì hủy phiếu và hoàn kho ngay lập tức
   if (phieu.HanNhanSach && new Date(phieu.HanNhanSach).getTime() < now.getTime()) {
+    const expiredClaim = await TheoDoiMuonSach.findOneAndUpdate(
+      {
+        _id: id,
+        TrangThai: 'DaDuyet',
+        HanNhanSach: { $lt: now },
+      },
+      { $set: { TrangThai: 'DaHuy' } },
+      { new: true }
+    );
+
+    if (expiredClaim) {
+      const stockSuccess = await hoanKhoSach(expiredClaim.MaSach);
+      if (!stockSuccess) {
+        console.warn(
+          `[HANDOVER_EXPIRY_WARN] Không thể hoàn kho cho sách ${expiredClaim.MaSach} (kho đã đầy hoặc bất thường), phiếu ${id} vẫn bị hủy`
+        );
+      }
+
+      await logAction({
+        msnv: 'HE_THONG',
+        hanhDong: 'HET_HAN_NHAN_SACH',
+        doiTuong: 'TheoDoiMuonSach',
+        maDoiTuong: String(expiredClaim._id),
+        chiTiet: {
+          MaSach: expiredClaim.MaSach,
+          MaDocGia: expiredClaim.MaDocGia,
+          HanNhanSach: expiredClaim.HanNhanSach,
+          LyDo: 'Giao sách khi đã quá hạn nhận',
+        },
+        ip: meta?.ip || '',
+      });
+    }
+
     throw new ApiError(
       409,
       'INVALID_STATE',
-      'Phiếu mượn đã quá hạn nhận sách, không thể thực hiện giao sách'
+      'Phiếu đã quá hạn nhận sách và đã bị hủy, sách đã được trả về kho'
     );
   }
 
   const settings = await getSettings();
   const hanTra = new Date(now.getTime() + settings.SoNgayMuon * 24 * 60 * 60 * 1000);
 
+  // Chiếm phiếu nguyên tử chuyển sang DangMuon, chặn từ phía DB nếu HanNhanSach < now
   const updatedPhieu = await TheoDoiMuonSach.findOneAndUpdate(
-    { _id: id, TrangThai: 'DaDuyet' },
+    {
+      _id: id,
+      TrangThai: 'DaDuyet',
+      $or: [
+        { HanNhanSach: null },
+        { HanNhanSach: { $gte: now } },
+      ],
+    },
     {
       $set: {
         TrangThai: 'DangMuon',
@@ -918,10 +972,18 @@ export const adminHandoverBorrowing = async (id, msnv, meta = {}) => {
   );
 
   if (!updatedPhieu) {
+    const currentPhieu = await TheoDoiMuonSach.findById(id).lean();
+    if (currentPhieu && currentPhieu.TrangThai === 'DaHuy') {
+      throw new ApiError(
+        409,
+        'INVALID_STATE',
+        'Phiếu đã quá hạn nhận sách và đã bị hủy, sách đã được trả về kho'
+      );
+    }
     throw new ApiError(
       409,
       'INVALID_STATE',
-      'Trạng thái phiếu mượn đã bị thay đổi, không thể giao sách'
+      'Trạng thái phiếu mượn đã bị thay đổi hoặc đã quá hạn nhận sách, không thể giao sách'
     );
   }
 
