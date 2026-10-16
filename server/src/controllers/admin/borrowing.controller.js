@@ -8,6 +8,8 @@ import {
   adminRejectBorrowing,
   adminHandoverBorrowing,
   adminCancelBorrowing,
+  adminReturnBorrowing,
+  adminPayFine,
 } from '../../services/borrowing.service.js';
 
 // Schema validate query lấy danh sách phiếu mượn ở admin (GET /api/admin/borrowings)
@@ -71,6 +73,58 @@ export const rejectBorrowingBodySchema = Joi.object({
     }),
 });
 
+// Schema validate body nhận trả sách (PATCH /api/admin/borrowings/:id/return)
+export const returnBorrowingBodySchema = Joi.object({
+  TinhTrangTra: Joi.string()
+    .valid('BinhThuong', 'Rach', 'Mat')
+    .required()
+    .messages({
+      'any.required': 'Tình trạng trả sách là bắt buộc',
+      'any.only': 'Tình trạng trả sách phải là BinhThuong, Rach hoặc Mat',
+    }),
+  MucRach: Joi.string()
+    .valid('Nhe', 'Nang')
+    .when('TinhTrangTra', {
+      is: 'Rach',
+      then: Joi.required().messages({
+        'any.required': 'Mức độ rách là bắt buộc khi sách bị rách',
+        'any.only': 'Mức độ rách phải là Nhe hoặc Nang',
+      }),
+      otherwise: Joi.forbidden().messages({
+        'any.unknown': 'Mức độ rách chỉ áp dụng khi tình trạng trả là Rach',
+      }),
+    }),
+  LoaiBoKhoiKho: Joi.boolean().when('TinhTrangTra', {
+    is: 'Rach',
+    then: Joi.boolean().default(false),
+    otherwise: Joi.forbidden().messages({
+      'any.unknown': 'Chỉ được chỉ định loại bỏ khỏi kho khi tình trạng trả là Rach',
+    }),
+  }),
+  GhiChuPhat: Joi.string()
+    .trim()
+    .max(500)
+    .when('TinhTrangTra', {
+      is: Joi.valid('Rach', 'Mat'),
+      then: Joi.string().trim().min(1).max(500).required().messages({
+        'any.required': 'Ghi chú phạt là bắt buộc khi sách bị rách hoặc mất',
+        'string.empty': 'Ghi chú phạt không được để trống khi sách bị rách hoặc mất',
+        'string.max': 'Ghi chú phạt không được vượt quá 500 ký tự',
+      }),
+      otherwise: Joi.string().trim().max(500).allow('').optional().default(''),
+    }),
+});
+
+// Schema validate body thanh toán tiền phạt (PATCH /api/admin/borrowings/:id/pay-fine)
+export const payFineBodySchema = Joi.object({}).unknown(false);
+
+// Schema validate body hủy phiếu mượn bởi nhân viên (PATCH /api/admin/borrowings/:id/cancel)
+export const cancelBorrowingBodySchema = Joi.object({
+  LyDo: Joi.string().trim().max(300).allow('').optional().messages({
+    'string.max': 'Lý do hủy không được vượt quá 300 ký tự',
+  }),
+}).unknown(false);
+
 /**
  * GET /api/admin/borrowings
  * Lấy danh sách phiếu mượn toàn hệ thống kèm lọc đa tiêu chí
@@ -124,11 +178,34 @@ export const handover = asyncHandler(async (req, res) => {
 });
 
 /**
+ * PATCH /api/admin/borrowings/:id/return
+ * Nhận trả sách từ độc giả (DangMuon -> DaTra), tự động tính phạt và cập nhật kho
+ */
+export const returnBook = asyncHandler(async (req, res) => {
+  const result = await adminReturnBorrowing(req.params.id, req.admin.msnv, req.body, {
+    ip: req.ip,
+  });
+  return ok(res, result, 'Nhận trả sách thành công');
+});
+
+/**
+ * PATCH /api/admin/borrowings/:id/pay-fine
+ * Thu tiền phạt từ độc giả (ChuaThanhToan -> DaThanhToan)
+ */
+export const payFine = asyncHandler(async (req, res) => {
+  const result = await adminPayFine(req.params.id, req.admin.msnv, {
+    ip: req.ip,
+  });
+  return ok(res, result, 'Thu tiền phạt thành công');
+});
+
+/**
  * PATCH /api/admin/borrowings/:id/cancel
- * Hủy phiếu mượn thay độc giả (khi ChoDuyet hoặc DaDuyet)
+ * Hủy phiếu mượn thay độc giả (khi ChoDuyet hoặc DaDuyet) kèm lý do tùy chọn
  */
 export const cancel = asyncHandler(async (req, res) => {
-  const canceled = await adminCancelBorrowing(req.params.id, req.admin.msnv, {
+  const { LyDo } = req.body || {};
+  const canceled = await adminCancelBorrowing(req.params.id, req.admin.msnv, LyDo, {
     ip: req.ip,
   });
   return ok(res, canceled, 'Hủy phiếu mượn thành công');
@@ -138,10 +215,15 @@ export default {
   adminListBorrowingsQuerySchema,
   borrowingIdParamSchema,
   rejectBorrowingBodySchema,
+  returnBorrowingBodySchema,
+  payFineBodySchema,
+  cancelBorrowingBodySchema,
   list,
   getDetail,
   approve,
   reject,
   handover,
+  returnBook,
+  payFine,
   cancel,
 };

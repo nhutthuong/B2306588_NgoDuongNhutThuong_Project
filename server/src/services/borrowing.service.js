@@ -8,6 +8,7 @@ import { ApiError } from '../utils/ApiError.js';
 import { ACTIVE_STATUSES, isOverdue, soNgayTre } from '../utils/borrowing.js';
 import { getPagination, getPaginationMeta } from '../utils/pagination.js';
 import { escapeRegex } from '../utils/escapeRegex.js';
+import { tinhTongPhat } from './fine.service.js';
 
 /**
  * Lấy tóm tắt tình trạng mượn sách của một độc giả (dùng cho P3-1 và P3-2).
@@ -479,10 +480,18 @@ export const cancelBorrowing = async (maDocGia, id, meta = {}) => {
 
   // Tác động kho: Hoàn kho (+1 SoQuyenConLai) nếu hủy từ DaDuyet
   if (oldStatus === 'DaDuyet') {
-    await Sach.updateOne(
-      { MaSach: updated.MaSach },
-      { $inc: { SoQuyenConLai: 1 } }
-    );
+    const success = await hoanKhoSach(updated.MaSach);
+    if (!success) {
+      // Hoàn tác phiếu về DaDuyet nếu hoàn kho thất bại
+      await TheoDoiMuonSach.findOneAndUpdate(
+        { _id: id, TrangThai: 'DaHuy' },
+        { $set: { TrangThai: 'DaDuyet' } }
+      );
+      console.error(
+        `[USER_CANCEL_ERROR] Hoan kho that bai cho sach ${updated.MaSach}, da hoan tac phieu ${id}`
+      );
+      throw new ApiError(500, 'INTERNAL_ERROR', 'Không thể hủy phiếu mượn do lỗi hoàn kho sách');
+    }
   }
 
   // Ghi nhật ký qua audit.service
@@ -592,6 +601,10 @@ export const adminListBorrowings = async (query = {}, now = new Date()) => {
         path: 'NhanVienNhanTra',
         select: 'MSNV HoTenNV ChucVu',
       })
+      .populate({
+        path: 'NhanVienThuPhat',
+        select: 'MSNV HoTenNV ChucVu',
+      })
       .lean(),
     TheoDoiMuonSach.countDocuments(filter),
   ]);
@@ -645,6 +658,10 @@ export const adminGetBorrowingDetail = async (id, now = new Date()) => {
     })
     .populate({
       path: 'NhanVienNhanTra',
+      select: 'MSNV HoTenNV ChucVu',
+    })
+    .populate({
+      path: 'NhanVienThuPhat',
       select: 'MSNV HoTenNV ChucVu',
     })
     .lean();
@@ -927,16 +944,69 @@ export const adminHandoverBorrowing = async (id, msnv, meta = {}) => {
 };
 
 /**
+ * Hoàn lại 1 quyển sách vào kho nguyên tử (SoQuyenConLai +1).
+ * Điều kiện bảo vệ bất biến 0 <= SoQuyenConLai <= SoQuyen:
+ * Dùng filter $expr { $lt: ['$SoQuyenConLai', '$SoQuyen'] } để đảm bảo không cộng vượt quá SoQuyen.
+ * Không lọc DaXoa (sách đã xóa mềm vẫn phải cập nhật được kho theo SYSTEM.md §6).
+ *
+ * @param {string} maSach - Mã sách cần hoàn kho
+ * @returns {Promise<boolean>} true nếu hoàn kho thành công, false nếu vi phạm điều kiện hoặc lỗi
+ */
+export const hoanKhoSach = async (maSach) => {
+  try {
+    const updated = await Sach.findOneAndUpdate(
+      {
+        MaSach: maSach,
+        $expr: { $lt: ['$SoQuyenConLai', '$SoQuyen'] },
+      },
+      { $inc: { SoQuyenConLai: 1 } },
+      { new: true }
+    );
+    return Boolean(updated);
+  } catch (err) {
+    console.error(`[HOAN_KHO_ERROR] Loi khi cap nhat hoan kho sach ${maSach}:`, err.message);
+    return false;
+  }
+};
+
+/**
+ * Giảm 1 tổng số quyển sách (SoQuyen -1) khi sách mất hoặc rách loại bỏ khỏi kho.
+ * Điều kiện bảo vệ bất biến 0 <= SoQuyenConLai <= SoQuyen:
+ * Dùng filter SoQuyen >= 1. Không thay đổi SoQuyenConLai.
+ * Không lọc DaXoa (sách đã xóa mềm vẫn cập nhật kho).
+ *
+ * @param {string} maSach - Mã sách
+ * @returns {Promise<boolean>} true nếu giảm kho thành công, false nếu vi phạm điều kiện hoặc lỗi
+ */
+export const giamTongKhoSach = async (maSach) => {
+  try {
+    const updated = await Sach.findOneAndUpdate(
+      {
+        MaSach: maSach,
+        SoQuyen: { $gte: 1 },
+      },
+      { $inc: { SoQuyen: -1 } },
+      { new: true }
+    );
+    return Boolean(updated);
+  } catch (err) {
+    console.error(`[GIAM_TONG_KHO_ERROR] Loi khi giam tong so quyen sach ${maSach}:`, err.message);
+    return false;
+  }
+};
+
+/**
  * Hủy phiếu mượn thay độc giả bởi nhân viên/admin (PATCH /api/admin/borrowings/:id/cancel).
  *
  * @param {string} id - _id phiếu mượn
  * @param {string} msnv - Mã số nhân viên thực hiện hủy
+ * @param {string} [lyDo=''] - Lý do hủy phiếu (tối đa 300 ký tự)
  * @param {object} [meta={}] - Dữ liệu kèm theo ({ ip })
  * @returns {Promise<object>}
  */
-export const adminCancelBorrowing = async (id, msnv, meta = {}) => {
+export const adminCancelBorrowing = async (id, msnv, lyDo = '', meta = {}) => {
   if (!mongoose.Types.ObjectId.isValid(id)) {
-    throw ApiError.notFound('Không tìm thấy phiếu mượn');
+    throw ApiError.badRequest('Mã định danh phiếu mượn không hợp lệ', 'VALIDATION_ERROR');
   }
 
   const phieu = await TheoDoiMuonSach.findById(id);
@@ -948,7 +1018,7 @@ export const adminCancelBorrowing = async (id, msnv, meta = {}) => {
     throw new ApiError(
       409,
       'INVALID_STATE',
-      'Chỉ có thể hủy phiếu mượn ở trạng thái Chờ duyệt hoặc Đã duyệt'
+      `Không thể hủy phiếu mượn ở trạng thái '${phieu.TrangThai}' (chỉ cho phép 'ChoDuyet' hoặc 'DaDuyet')`
     );
   }
 
@@ -964,19 +1034,27 @@ export const adminCancelBorrowing = async (id, msnv, meta = {}) => {
     throw new ApiError(
       409,
       'INVALID_STATE',
-      'Trạng thái phiếu mượn đã bị thay đổi, không thể hủy'
+      'Trạng thái phiếu mượn đã bị thay đổi bởi người khác, không thể hủy'
     );
   }
 
-  // Nếu hủy từ DaDuyet: hoàn kho (+1 SoQuyenConLai)
+  // Nếu hủy từ DaDuyet: hoàn kho (+1 SoQuyenConLai) với điều kiện bảo vệ
   if (oldStatus === 'DaDuyet') {
-    await Sach.updateOne(
-      { MaSach: updatedPhieu.MaSach },
-      { $inc: { SoQuyenConLai: 1 } }
-    );
+    const success = await hoanKhoSach(updatedPhieu.MaSach);
+    if (!success) {
+      // Hoàn tác phiếu về DaDuyet nếu hoàn kho thất bại
+      await TheoDoiMuonSach.findOneAndUpdate(
+        { _id: id, TrangThai: 'DaHuy' },
+        { $set: { TrangThai: 'DaDuyet' } }
+      );
+      console.error(
+        `[ADMIN_CANCEL_ERROR] Hoan kho that bai cho sach ${updatedPhieu.MaSach}, da hoan tac phieu ${id}`
+      );
+      throw new ApiError(500, 'INTERNAL_ERROR', 'Không thể hủy phiếu mượn do lỗi hoàn kho sách');
+    }
   }
 
-  // Ghi nhật ký qua audit.service
+  // Ghi nhật ký qua audit.service (lưu lý do trong ChiTiet, không thêm trường mới vào schema)
   await logAction({
     msnv,
     hanhDong: 'HUY_PHIEU',
@@ -988,6 +1066,245 @@ export const adminCancelBorrowing = async (id, msnv, meta = {}) => {
       TrangThaiCu: oldStatus,
       TrangThaiMoi: 'DaHuy',
       NguoiHuy: 'NhanVien',
+      LyDo: lyDo ? String(lyDo).trim() : '',
+    },
+    ip: meta?.ip || '',
+  });
+
+  return updatedPhieu.toObject();
+};
+
+/**
+ * Nhận trả sách từ độc giả (PATCH /api/admin/borrowings/:id/return).
+ * Quy trình xử lý theo thứ tự quan trọng:
+ * 1. Đọc phiếu và sách (kể cả sách đã xóa mềm vẫn đọc được để lấy DonGia), getSettings(), now = new Date().
+ * 2. Tính tongPhat bằng fine.service.
+ * 3. CHIẾM phiếu nguyên tử: findOneAndUpdate({ _id, TrangThai: 'DangMuon' }, ...).
+ * 4. Cập nhật kho NGUYÊN TỬ bằng $inc có điều kiện:
+ *    - BinhThuong: SoQuyenConLai +1
+ *    - Rach và LoaiBoKhoiKho = false: SoQuyenConLai +1
+ *    - Rach và LoaiBoKhoiKho = true: SoQuyen -1
+ *    - Mat: SoQuyen -1
+ * 5. Nếu bước 4 thất bại hoặc ném lỗi: hoàn tác phiếu về DangMuon, xóa các trường vừa gán và ném 500 INTERNAL_ERROR.
+ *
+ * @param {string} id - _id phiếu mượn
+ * @param {string} msnv - Mã số nhân viên nhận trả
+ * @param {object} returnData - Dữ liệu trả sách { TinhTrangTra, MucRach, LoaiBoKhoiKho, GhiChuPhat }
+ * @param {object} [meta={}] - Dữ liệu kèm theo ({ now, ip })
+ * @returns {Promise<object>} Phiếu mượn sau cập nhật kèm chiTietPhat
+ */
+export const adminReturnBorrowing = async (id, msnv, returnData, meta = {}) => {
+  if (!mongoose.Types.ObjectId.isValid(id)) {
+    throw ApiError.badRequest('Mã định danh phiếu mượn không hợp lệ', 'VALIDATION_ERROR');
+  }
+
+  // 1. Đọc phiếu và sách
+  const phieu = await TheoDoiMuonSach.findById(id);
+  if (!phieu) {
+    throw ApiError.notFound('Không tìm thấy phiếu mượn');
+  }
+
+  if (phieu.TrangThai !== 'DangMuon') {
+    throw new ApiError(
+      409,
+      'INVALID_STATE',
+      `Không thể nhận trả sách cho phiếu ở trạng thái '${phieu.TrangThai}' (chỉ cho phép khi 'DangMuon')`
+    );
+  }
+
+  // Sách kể cả đã xóa mềm vẫn đọc được để lấy DonGia
+  const sach = await Sach.findOne({ MaSach: phieu.MaSach });
+  if (!sach) {
+    throw ApiError.notFound('Không tìm thấy thông tin sách tương ứng với phiếu mượn');
+  }
+
+  const settings = await getSettings();
+  const now = meta?.now ? new Date(meta.now) : new Date();
+
+  const {
+    TinhTrangTra,
+    MucRach,
+    LoaiBoKhoiKho = false,
+    GhiChuPhat = '',
+  } = returnData;
+
+  // 2. Tính tongPhat bằng fine.service
+  const chiTietPhat = tinhTongPhat({
+    hanTra: phieu.HanTra,
+    now,
+    donGia: sach.DonGia,
+    tinhTrangTra: TinhTrangTra,
+    mucRach: MucRach,
+    settings,
+  });
+
+  const { phiTre, phatTinhTrang, tienPhat, soNgayTre } = chiTietPhat;
+
+  // 3. CHIẾM phiếu nguyên tử
+  const updateFields = {
+    TrangThai: 'DaTra',
+    NgayTra: now,
+    MSNVNhanTra: msnv,
+    TinhTrangTra,
+    LoaiBoKhoiKho: TinhTrangTra === 'Rach' ? Boolean(LoaiBoKhoiKho) : false,
+    PhiTre: phiTre,
+    TienPhat: tienPhat,
+    GhiChuPhat: GhiChuPhat ? String(GhiChuPhat).trim() : '',
+    TrangThaiPhat: tienPhat > 0 ? 'ChuaThanhToan' : 'KhongPhat',
+  };
+
+  if (TinhTrangTra === 'Rach' && MucRach) {
+    updateFields.MucRach = MucRach;
+  }
+
+  const updatedPhieu = await TheoDoiMuonSach.findOneAndUpdate(
+    { _id: id, TrangThai: 'DangMuon' },
+    { $set: updateFields },
+    { new: true }
+  );
+
+  if (!updatedPhieu) {
+    throw new ApiError(
+      409,
+      'INVALID_STATE',
+      'Phiếu mượn đã được xử lý hoặc trạng thái đã bị thay đổi bởi người khác'
+    );
+  }
+
+  // 4. Cập nhật kho NGUYÊN TỬ bằng $inc có điều kiện
+  const isReturnToStock =
+    TinhTrangTra === 'BinhThuong' || (TinhTrangTra === 'Rach' && !LoaiBoKhoiKho);
+
+  const stockSuccess = isReturnToStock
+    ? await hoanKhoSach(phieu.MaSach)
+    : await giamTongKhoSach(phieu.MaSach);
+
+  // 5. Nếu bước 4 thất bại: Hoàn tác phiếu bằng cơ chế bù trừ (compensation)
+  // Lý do: MongoDB cài đặt đơn lẻ (standalone) không hỗ trợ Multi-Document Transaction,
+  // do đó hệ thống áp dụng kỹ thuật thao tác nguyên tử có điều kiện kết hợp rollback bù trừ.
+  if (!stockSuccess) {
+    await TheoDoiMuonSach.findOneAndUpdate(
+      { _id: id, TrangThai: 'DaTra' },
+      {
+        $set: {
+          TrangThai: 'DangMuon',
+          PhiTre: 0,
+          TienPhat: 0,
+          TrangThaiPhat: 'KhongPhat',
+          LoaiBoKhoiKho: false,
+          GhiChuPhat: '',
+        },
+        $unset: {
+          NgayTra: 1,
+          MSNVNhanTra: 1,
+          TinhTrangTra: 1,
+          MucRach: 1,
+        },
+      }
+    );
+    console.error(
+      `[RETURN_ERROR] Khong the cap nhat kho cho sach ${phieu.MaSach}, da hoan tac phieu ${id}`
+    );
+    throw new ApiError(500, 'INTERNAL_ERROR', 'Không thể hoàn tất trả sách do lỗi cập nhật kho');
+  }
+
+  // 6. Ghi nhật ký qua audit.service
+  await logAction({
+    msnv,
+    hanhDong: 'NHAN_TRA',
+    doiTuong: 'TheoDoiMuonSach',
+    maDoiTuong: String(updatedPhieu._id),
+    chiTiet: {
+      MaSach: updatedPhieu.MaSach,
+      MaDocGia: updatedPhieu.MaDocGia,
+      TinhTrangTra: updatedPhieu.TinhTrangTra,
+      TienPhat: updatedPhieu.TienPhat,
+    },
+    ip: meta?.ip || '',
+  });
+
+  return {
+    ...updatedPhieu.toObject(),
+    chiTietPhat,
+  };
+};
+
+/**
+ * Thu tiền phạt từ độc giả (PATCH /api/admin/borrowings/:id/pay-fine).
+ * Chuyển trạng thái phạt: ChuaThanhToan -> DaThanhToan.
+ * Gán NgayThanhToanPhat = now và MSNVThuPhat.
+ *
+ * @param {string} id - _id phiếu mượn
+ * @param {string} msnv - Mã số nhân viên thu phạt
+ * @param {object} [meta={}] - Dữ liệu kèm theo ({ now, ip })
+ * @returns {Promise<object>}
+ */
+export const adminPayFine = async (id, msnv, meta = {}) => {
+  if (!mongoose.Types.ObjectId.isValid(id)) {
+    throw ApiError.badRequest('Mã định danh phiếu mượn không hợp lệ', 'VALIDATION_ERROR');
+  }
+
+  const now = meta?.now ? new Date(meta.now) : new Date();
+
+  // Chiếm và cập nhật trạng thái phạt nguyên tử
+  const updatedPhieu = await TheoDoiMuonSach.findOneAndUpdate(
+    { _id: id, TrangThai: 'DaTra', TrangThaiPhat: 'ChuaThanhToan' },
+    {
+      $set: {
+        TrangThaiPhat: 'DaThanhToan',
+        NgayThanhToanPhat: now,
+        MSNVThuPhat: msnv,
+      },
+    },
+    { new: true }
+  );
+
+  // Nếu không khớp, phân biệt rõ từng trường hợp lỗi
+  if (!updatedPhieu) {
+    const phieu = await TheoDoiMuonSach.findById(id).lean();
+    if (!phieu) {
+      throw ApiError.notFound('Không tìm thấy phiếu mượn');
+    }
+    if (phieu.TrangThai !== 'DaTra') {
+      throw new ApiError(
+        409,
+        'INVALID_STATE',
+        `Chỉ có thể thu tiền phạt đối với phiếu đã trả sách (trạng thái hiện tại: '${phieu.TrangThai}')`
+      );
+    }
+    if (phieu.TrangThaiPhat === 'KhongPhat') {
+      throw new ApiError(
+        409,
+        'INVALID_STATE',
+        'Phiếu mượn này không có khoản tiền phạt nào cần thanh toán'
+      );
+    }
+    if (phieu.TrangThaiPhat === 'DaThanhToan') {
+      throw new ApiError(
+        409,
+        'INVALID_STATE',
+        'Khoản tiền phạt của phiếu mượn này đã được thanh toán trước đó'
+      );
+    }
+    throw new ApiError(
+      409,
+      'INVALID_STATE',
+      'Trạng thái phạt của phiếu mượn đã bị thay đổi bởi người khác'
+    );
+  }
+
+  // Ghi nhật ký qua audit.service
+  await logAction({
+    msnv,
+    hanhDong: 'THU_PHAT',
+    doiTuong: 'TheoDoiMuonSach',
+    maDoiTuong: String(updatedPhieu._id),
+    chiTiet: {
+      MaDocGia: updatedPhieu.MaDocGia,
+      MaSach: updatedPhieu.MaSach,
+      TienPhat: updatedPhieu.TienPhat,
+      NgayThanhToanPhat: updatedPhieu.NgayThanhToanPhat,
+      MSNVThuPhat: msnv,
     },
     ip: meta?.ip || '',
   });
@@ -1008,4 +1325,9 @@ export default {
   adminRejectBorrowing,
   adminHandoverBorrowing,
   adminCancelBorrowing,
+  adminReturnBorrowing,
+  adminPayFine,
+  hoanKhoSach,
+  giamTongKhoSach,
 };
+

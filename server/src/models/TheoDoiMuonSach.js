@@ -173,6 +173,13 @@ theoDoiMuonSachSchema.virtual('NhanVienNhanTra', {
   justOne: true,
 });
 
+theoDoiMuonSachSchema.virtual('NhanVienThuPhat', {
+  ref: 'NhanVien',
+  localField: 'MSNVThuPhat',
+  foreignField: 'MSNV',
+  justOne: true,
+});
+
 // Index ho tro dem gioihan, lich su muon
 theoDoiMuonSachSchema.index({ MaDocGia: 1, TrangThai: 1 });
 theoDoiMuonSachSchema.index({ MaSach: 1, TrangThai: 1 });
