@@ -21,7 +21,8 @@
     "check:adminborrowings": "node src/seeds/checkAdminBorrowings.js",
     "check:returns": "node src/seeds/checkReturns.js",
     "expire:run": "node src/seeds/runExpiry.js",
-    "check:expiry": "node src/seeds/checkExpiry.js"
+    "check:expiry": "node src/seeds/checkExpiry.js",
+    "check:readers": "node src/seeds/checkReaders.js"
   },
   "dependencies": {
     "bcryptjs": "^3.0.3",

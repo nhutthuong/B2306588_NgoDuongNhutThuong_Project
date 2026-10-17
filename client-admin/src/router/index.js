@@ -85,8 +85,21 @@ const routes = [
   {
     path: '/readers',
     name: 'readers',
-    component: () => import('../views/ReadersView.vue'),
+    component: () => import('../views/ReaderListView.vue'),
     meta: { requiresAuth: true, title: 'Quản lý Độc giả' },
+  },
+  {
+    path: '/readers/:maDocGia',
+    name: 'reader-detail',
+    component: () => import('../views/ReaderDetailView.vue'),
+    meta: { requiresAuth: true, title: 'Chi tiết Độc giả' },
+    beforeEnter: (to, from, next) => {
+      // Tham số :maDocGia sai định dạng (regex ^DG\\d{4,}$) thì chuyển sang trang không tìm thấy (404)
+      if (!/^DG\d{4,}$/.test(to.params.maDocGia)) {
+        return next({ name: 'not-found' });
+      }
+      next();
+    },
   },
   {
     path: '/staff',

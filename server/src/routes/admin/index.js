@@ -3,6 +3,7 @@ import authRoutes from './auth.routes.js';
 import publisherRoutes from './publisher.routes.js';
 import bookRoutes from './book.routes.js';
 import borrowingRoutes from './borrowing.routes.js';
+import readerRoutes from './reader.routes.js';
 
 const router = Router();
 
@@ -17,6 +18,9 @@ router.use('/books', bookRoutes);
 
 // Gắn nhánh quản lý mượn sách: /api/admin/borrowings/*
 router.use('/borrowings', borrowingRoutes);
+
+// Gắn nhánh quản lý độc giả: /api/admin/readers/*
+router.use('/readers', readerRoutes);
 
 export default router;
 
