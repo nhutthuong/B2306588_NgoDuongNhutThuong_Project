@@ -134,6 +134,18 @@ export const useAuthStore = defineStore('auth', {
     },
 
     /**
+     * Cập nhật thông tin độc giả trong store
+     * @param {object} user
+     */
+    setUser(user) {
+      if (this.user && user) {
+        this.user = { ...this.user, ...user };
+      } else {
+        this.user = user;
+      }
+    },
+
+    /**
      * Xóa sạch phiên làm việc khỏi bộ nhớ RAM
      */
     clearSession() {
