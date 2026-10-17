@@ -23,7 +23,8 @@
     "expire:run": "node src/seeds/runExpiry.js",
     "check:expiry": "node src/seeds/checkExpiry.js",
     "check:readers": "node src/seeds/checkReaders.js",
-    "check:staff": "node src/seeds/checkStaff.js"
+    "check:staff": "node src/seeds/checkStaff.js",
+    "check:settings": "node src/seeds/checkSettingsAndAudit.js"
   },
   "dependencies": {
     "bcryptjs": "^3.0.3",

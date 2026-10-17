@@ -47,8 +47,27 @@ const nhatKySchema = new mongoose.Schema(
   }
 );
 
-// Index sap xep nhat ky theo thoi gian moi nhat
+// Virtual liên kết thông tin nhân viên thực hiện (nếu là nhân viên)
+nhatKySchema.virtual('NhanVien', {
+  ref: 'NhanVien',
+  localField: 'MSNV',
+  foreignField: 'MSNV',
+  justOne: true,
+});
+
+// Virtual liên kết thông tin độc giả (nếu là độc giả thực hiện)
+nhatKySchema.virtual('DocGia', {
+  ref: 'DocGia',
+  localField: 'MSNV',
+  foreignField: 'MaDocGia',
+  justOne: true,
+});
+
+// Index phục vụ sắp xếp và lọc nhật ký
 nhatKySchema.index({ createdAt: -1 });
+nhatKySchema.index({ MSNV: 1, createdAt: -1 });
+nhatKySchema.index({ HanhDong: 1, createdAt: -1 });
+nhatKySchema.index({ DoiTuong: 1, createdAt: -1 });
 
 export const NhatKy = mongoose.model('NhatKy', nhatKySchema);
 export default NhatKy;

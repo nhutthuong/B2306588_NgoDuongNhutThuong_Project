@@ -5,6 +5,8 @@ import bookRoutes from './book.routes.js';
 import borrowingRoutes from './borrowing.routes.js';
 import readerRoutes from './reader.routes.js';
 import staffRoutes from './staff.routes.js';
+import settingsRoutes from './settings.routes.js';
+import auditRoutes from './audit.routes.js';
 
 const router = Router();
 
@@ -25,6 +27,12 @@ router.use('/readers', readerRoutes);
 
 // Gắn nhánh quản lý nhân viên: /api/admin/staff/*
 router.use('/staff', staffRoutes);
+
+// Gắn nhánh cấu hình hệ thống: /api/admin/settings/*
+router.use('/settings', settingsRoutes);
+
+// Gắn nhánh nhật ký kiểm toán hệ thống: /api/admin/audit-logs/*
+router.use('/audit-logs', auditRoutes);
 
 export default router;
 

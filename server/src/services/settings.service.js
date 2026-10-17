@@ -1,4 +1,5 @@
 import CauHinh from '../models/CauHinh.js';
+import { logAction } from './audit.service.js';
 
 /**
  * Giá trị cấu hình mặc định của hệ thống theo docs/SYSTEM.md §5
@@ -62,7 +63,77 @@ export const getSettings = async () => {
   };
 };
 
+/**
+ * Cập nhật cấu hình hệ thống (CHỈ Admin)
+ * @param {object} payload - Các trường cấu hình cần cập nhật
+ * @param {object} [adminUser={}] - Thông tin admin thực hiện { msnv }
+ * @param {string} [ip=''] - IP client
+ * @returns {Promise<object>} Cấu hình sau cập nhật
+ */
+export const updateSettings = async (payload = {}, adminUser = {}, ip = '') => {
+  const current = await getSettings();
+
+  const updateDoc = {
+    SoSachToiDa: payload.SoSachToiDa !== undefined ? payload.SoSachToiDa : current.SoSachToiDa,
+    SoNgayMuon: payload.SoNgayMuon !== undefined ? payload.SoNgayMuon : current.SoNgayMuon,
+    HanNhanSach: payload.HanNhanSach !== undefined ? payload.HanNhanSach : current.HanNhanSach,
+    PhiTreMoiNgay: payload.PhiTreMoiNgay !== undefined ? payload.PhiTreMoiNgay : current.PhiTreMoiNgay,
+    TyLePhatRach: payload.TyLePhatRach !== undefined ? payload.TyLePhatRach : current.TyLePhatRach,
+    TyLePhatMat: payload.TyLePhatMat !== undefined ? payload.TyLePhatMat : current.TyLePhatMat,
+    PhiXuLyMat: payload.PhiXuLyMat !== undefined ? payload.PhiXuLyMat : current.PhiXuLyMat,
+  };
+
+  await CauHinh.findOneAndUpdate(
+    { Khoa: 'main' },
+    { $set: updateDoc },
+    { upsert: true, new: true, runValidators: true }
+  );
+
+  await logAction({
+    msnv: adminUser.msnv,
+    hanhDong: 'CAP_NHAT_CAU_HINH',
+    doiTuong: 'CauHinh',
+    maDoiTuong: 'main',
+    chiTiet: {
+      cacTruongThayDoi: Object.keys(payload),
+      giaTriMoi: payload,
+    },
+    ip,
+  });
+
+  return getSettings();
+};
+
+/**
+ * Khôi phục cấu hình hệ thống về mặc định (CHỈ Admin)
+ * @param {object} [adminUser={}]
+ * @param {string} [ip='']
+ * @returns {Promise<object>}
+ */
+export const resetSettings = async (adminUser = {}, ip = '') => {
+  await CauHinh.findOneAndUpdate(
+    { Khoa: 'main' },
+    { $set: DEFAULT_SETTINGS },
+    { upsert: true, new: true, runValidators: true }
+  );
+
+  await logAction({
+    msnv: adminUser.msnv,
+    hanhDong: 'KHOI_PHUC_CAU_HINH',
+    doiTuong: 'CauHinh',
+    maDoiTuong: 'main',
+    chiTiet: {
+      giaTriMacDinh: DEFAULT_SETTINGS,
+    },
+    ip,
+  });
+
+  return getSettings();
+};
+
 export default {
   DEFAULT_SETTINGS,
   getSettings,
+  updateSettings,
+  resetSettings,
 };
