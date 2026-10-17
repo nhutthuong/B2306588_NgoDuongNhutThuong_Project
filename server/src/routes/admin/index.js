@@ -4,6 +4,7 @@ import publisherRoutes from './publisher.routes.js';
 import bookRoutes from './book.routes.js';
 import borrowingRoutes from './borrowing.routes.js';
 import readerRoutes from './reader.routes.js';
+import staffRoutes from './staff.routes.js';
 
 const router = Router();
 
@@ -21,6 +22,9 @@ router.use('/borrowings', borrowingRoutes);
 
 // Gắn nhánh quản lý độc giả: /api/admin/readers/*
 router.use('/readers', readerRoutes);
+
+// Gắn nhánh quản lý nhân viên: /api/admin/staff/*
+router.use('/staff', staffRoutes);
 
 export default router;
 
