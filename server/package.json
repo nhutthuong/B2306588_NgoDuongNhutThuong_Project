@@ -24,7 +24,8 @@
     "check:expiry": "node src/seeds/checkExpiry.js",
     "check:readers": "node src/seeds/checkReaders.js",
     "check:staff": "node src/seeds/checkStaff.js",
-    "check:settings": "node src/seeds/checkSettingsAndAudit.js"
+    "check:settings": "node src/seeds/checkSettingsAndAudit.js",
+    "check:stats": "node src/seeds/checkStats.js"
   },
   "dependencies": {
     "bcryptjs": "^3.0.3",

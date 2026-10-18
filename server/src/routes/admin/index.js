@@ -7,6 +7,7 @@ import readerRoutes from './reader.routes.js';
 import staffRoutes from './staff.routes.js';
 import settingsRoutes from './settings.routes.js';
 import auditRoutes from './audit.routes.js';
+import statsRoutes from './stats.routes.js';
 
 const router = Router();
 
@@ -33,6 +34,9 @@ router.use('/settings', settingsRoutes);
 
 // Gắn nhánh nhật ký kiểm toán hệ thống: /api/admin/audit-logs/*
 router.use('/audit-logs', auditRoutes);
+
+// Gắn nhánh thống kê: /api/admin/stats/*
+router.use('/stats', statsRoutes);
 
 export default router;
 
