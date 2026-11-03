@@ -435,6 +435,10 @@ onMounted(() => {
                       <div class="small text-muted font-monospace" style="font-size: 0.75rem;">
                         Mã: {{ item.MaSach }}
                       </div>
+                      <div v-if="item.Sach?.KeSach || item.Sach?.MaKe" class="small text-danger fw-semibold" style="font-size: 0.75rem;">
+                        <i class="bi bi-geo-alt-fill me-1"></i>{{ item.Sach?.KeSach?.TenKe || item.Sach?.MaKe }}
+                        <span v-if="item.Sach?.ViTriNgan"> (N{{ item.Sach?.ViTriNgan }})</span>
+                      </div>
                     </div>
                   </div>
                 </td>
@@ -564,6 +568,10 @@ onMounted(() => {
               </RouterLink>
               <div class="small text-secondary mb-1">
                 {{ item.Sach?.NguonGocTacGia || '—' }}
+              </div>
+              <div v-if="item.Sach?.KeSach || item.Sach?.MaKe" class="small text-danger fw-semibold mb-1" style="font-size: 0.75rem;">
+                <i class="bi bi-geo-alt-fill me-1"></i>{{ item.Sach?.KeSach?.TenKe || item.Sach?.MaKe }}
+                <span v-if="item.Sach?.ViTriNgan"> (N{{ item.Sach?.ViTriNgan }})</span>
               </div>
               <StatusBadge
                 :status="item.TrangThai"

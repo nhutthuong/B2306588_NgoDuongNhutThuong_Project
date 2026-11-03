@@ -281,6 +281,17 @@ const handleImageError = () => {
                     <span class="text-muted small ms-2">(Giá trị làm căn cứ bồi thường khi mất/hỏng)</span>
                   </td>
                 </tr>
+                <tr v-if="book.KeSach || book.MaKe" class="border-bottom">
+                  <td class="text-muted small py-2">Vị trí trên kệ</td>
+                  <td class="py-2">
+                    <span class="badge bg-info-subtle text-info-emphasis border border-info-subtle px-2 py-1 fs-6">
+                      <i class="bi bi-geo-alt-fill text-danger me-1"></i>
+                      {{ book.KeSach?.KhuVuc ? book.KeSach.KhuVuc + ' • ' : '' }}
+                      {{ book.KeSach?.TenKe || book.MaKe }}
+                      <span v-if="book.ViTriNgan"> (Ngăn số {{ book.ViTriNgan }})</span>
+                    </span>
+                  </td>
+                </tr>
                 <tr>
                   <td class="text-muted small py-2">Tình trạng kho</td>
                   <td class="py-2">

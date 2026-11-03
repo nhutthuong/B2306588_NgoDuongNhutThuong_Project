@@ -3,6 +3,7 @@ import { ref, reactive, computed, watch, onMounted, onUnmounted } from 'vue';
 import { useRoute, useRouter, RouterLink, onBeforeRouteLeave } from 'vue-router';
 import bookApi from '../api/book.api.js';
 import publisherApi from '../api/publisher.api.js';
+import shelfApi from '../api/shelf.api.js';
 import { getErrorMessage, getFieldErrors } from '../api/http.js';
 import { getCoverUrl } from '../utils/format.js';
 import LoadingSpinner from '../components/LoadingSpinner.vue';
@@ -36,6 +37,10 @@ const isSoftDeleted = ref(false);
 const publishers = ref([]);
 const isPublishersLoading = ref(false);
 
+// Danh sách kệ sách cho dropdown
+const shelves = ref([]);
+const isShelvesLoading = ref(false);
+
 // Thông tin sách ban đầu khi ở chế độ chỉnh sửa (phục vụ dirty check và tính dangGiu)
 const initialData = ref(null);
 const initialSoQuyen = ref(0);
@@ -51,6 +56,15 @@ const form = reactive({
   NguonGocTacGia: '',
   TheLoai: '',
   MoTa: '',
+  MaKe: '',
+  ViTriNgan: '',
+});
+
+// Kệ sách đang chọn và các ngăn khả dụng
+const selectedShelf = computed(() => shelves.value.find((s) => s.MaKe === form.MaKe));
+const availableTiers = computed(() => {
+  if (!selectedShelf.value?.SoNgan) return [];
+  return Array.from({ length: selectedShelf.value.SoNgan }, (_, i) => i + 1);
 });
 
 // Lỗi validation
@@ -63,6 +77,8 @@ const errors = reactive({
   NguonGocTacGia: '',
   TheLoai: '',
   MoTa: '',
+  MaKe: '',
+  ViTriNgan: '',
   AnhBia: '',
   general: '',
 });
@@ -109,9 +125,23 @@ const isDirty = computed(() => {
     form.MaNXB !== (initialData.value.MaNXB || '') ||
     form.NguonGocTacGia !== (initialData.value.NguonGocTacGia || '') ||
     form.TheLoai !== (initialData.value.TheLoai || '') ||
-    form.MoTa !== (initialData.value.MoTa || '')
+    form.MoTa !== (initialData.value.MoTa || '') ||
+    (form.MaKe || '') !== (initialData.value.MaKe || '') ||
+    Number(form.ViTriNgan || 0) !== Number(initialData.value.ViTriNgan || 0)
   );
 });
+
+// Reset vị trí ngăn nếu đổi kệ mà ngăn không còn hợp lệ
+watch(
+  () => form.MaKe,
+  (newMaKe) => {
+    if (!newMaKe) {
+      form.ViTriNgan = '';
+    } else if (selectedShelf.value && form.ViTriNgan > selectedShelf.value.SoNgan) {
+      form.ViTriNgan = '';
+    }
+  }
+);
 
 /**
  * Tải danh mục NXB cho ô chọn
@@ -125,6 +155,21 @@ const loadPublishers = async () => {
     // Không chặn nếu lỗi
   } finally {
     isPublishersLoading.value = false;
+  }
+};
+
+/**
+ * Tải danh mục Kệ sách cho ô chọn
+ */
+const loadShelves = async () => {
+  isShelvesLoading.value = true;
+  try {
+    const res = await shelfApi.listSimple();
+    shelves.value = res.data?.data || [];
+  } catch {
+    // Không chặn nếu lỗi
+  } finally {
+    isShelvesLoading.value = false;
   }
 };
 
@@ -165,6 +210,8 @@ const loadBookDetail = async () => {
     form.NguonGocTacGia = book.NguonGocTacGia || '';
     form.TheLoai = book.TheLoai || '';
     form.MoTa = book.MoTa || '';
+    form.MaKe = book.MaKe || '';
+    form.ViTriNgan = book.ViTriNgan || '';
     currentCoverPath.value = book.AnhBia || '';
   } catch (error) {
     notFound.value = true;
@@ -176,6 +223,7 @@ const loadBookDetail = async () => {
 
 onMounted(() => {
   loadPublishers();
+  loadShelves();
   if (isEditMode.value) {
     loadBookDetail();
   }
@@ -338,6 +386,16 @@ const validateClient = () => {
     isValid = false;
   }
 
+  if (form.ViTriNgan) {
+    if (!form.MaKe) {
+      errors.ViTriNgan = 'Vui lòng chọn kệ sách trước khi chọn ngăn';
+      isValid = false;
+    } else if (selectedShelf.value && Number(form.ViTriNgan) > selectedShelf.value.SoNgan) {
+      errors.ViTriNgan = `Vị trí ngăn không được lớn hơn ${selectedShelf.value.SoNgan}`;
+      isValid = false;
+    }
+  }
+
   return isValid;
 };
 
@@ -368,6 +426,18 @@ const handleSubmit = async () => {
 
   if (form.MoTa.trim()) {
     formData.append('MoTa', form.MoTa.trim());
+  }
+
+  if (form.MaKe) {
+    formData.append('MaKe', form.MaKe.trim());
+  } else if (isEditMode.value) {
+    formData.append('MaKe', '');
+  }
+
+  if (form.ViTriNgan !== '' && form.ViTriNgan !== null && form.ViTriNgan !== undefined) {
+    formData.append('ViTriNgan', String(Math.floor(Number(form.ViTriNgan))));
+  } else if (isEditMode.value) {
+    formData.append('ViTriNgan', '');
   }
 
   // Tệp ảnh bìa nếu có chọn
@@ -611,6 +681,54 @@ const handleSubmit = async () => {
                     />
                     <div v-if="errors.NamXuatBan" class="invalid-feedback">
                       {{ errors.NamXuatBan }}
+                    </div>
+                  </div>
+                </div>
+
+                <!-- Vị trí kệ sách & Ngăn -->
+                <div class="row g-3 mb-3">
+                  <div class="col-12 col-md-7">
+                    <label for="bookMaKe" class="form-label small fw-bold">
+                      <i class="bi bi-bookshelf text-primary me-1"></i>Kệ sách
+                    </label>
+                    <select
+                      id="bookMaKe"
+                      v-model="form.MaKe"
+                      class="form-select"
+                      :class="{ 'is-invalid': errors.MaKe }"
+                      :disabled="isSubmitting || isSoftDeleted || isShelvesLoading"
+                    >
+                      <option value="">-- Chưa xếp vào kệ (để trống) --</option>
+                      <option v-for="shelf in shelves" :key="shelf.MaKe" :value="shelf.MaKe">
+                        {{ shelf.TenKe }} ({{ shelf.KhuVuc }})
+                      </option>
+                    </select>
+                    <div v-if="errors.MaKe" class="invalid-feedback">
+                      {{ errors.MaKe }}
+                    </div>
+                  </div>
+
+                  <div class="col-12 col-md-5">
+                    <label for="bookViTriNgan" class="form-label small fw-bold">
+                      Vị trí ngăn / tầng kệ
+                    </label>
+                    <select
+                      id="bookViTriNgan"
+                      v-model.number="form.ViTriNgan"
+                      class="form-select"
+                      :class="{ 'is-invalid': errors.ViTriNgan }"
+                      :disabled="isSubmitting || isSoftDeleted || !form.MaKe"
+                    >
+                      <option value="">-- Chưa chọn ngăn --</option>
+                      <option v-for="tier in availableTiers" :key="tier" :value="tier">
+                        Ngăn số {{ tier }}
+                      </option>
+                    </select>
+                    <div v-if="errors.ViTriNgan" class="invalid-feedback">
+                      {{ errors.ViTriNgan }}
+                    </div>
+                    <div v-if="selectedShelf" class="form-text small text-muted">
+                      Kệ "{{ selectedShelf.TenKe }}" có {{ selectedShelf.SoNgan }} ngăn.
                     </div>
                   </div>
                 </div>

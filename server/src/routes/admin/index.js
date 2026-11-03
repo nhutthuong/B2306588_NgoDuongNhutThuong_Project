@@ -2,6 +2,7 @@ import { Router } from 'express';
 import authRoutes from './auth.routes.js';
 import publisherRoutes from './publisher.routes.js';
 import bookRoutes from './book.routes.js';
+import shelfRoutes from './shelf.routes.js';
 import borrowingRoutes from './borrowing.routes.js';
 import readerRoutes from './reader.routes.js';
 import staffRoutes from './staff.routes.js';
@@ -19,6 +20,9 @@ router.use('/publishers', publisherRoutes);
 
 // Gắn nhánh quản lý sách: /api/admin/books/*
 router.use('/books', bookRoutes);
+
+// Gắn nhánh quản lý kệ sách: /api/admin/shelves/*
+router.use('/shelves', shelfRoutes);
 
 // Gắn nhánh quản lý mượn sách: /api/admin/borrowings/*
 router.use('/borrowings', borrowingRoutes);

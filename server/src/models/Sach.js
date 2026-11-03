@@ -80,6 +80,24 @@ const sachSchema = new mongoose.Schema(
       trim: true,
       default: '',
     },
+    MaKe: {
+      type: String,
+      trim: true,
+      uppercase: true,
+      default: null,
+    },
+    ViTriNgan: {
+      type: Number,
+      min: [1, 'Vị trí ngăn tối thiểu là 1'],
+      validate: {
+        validator: function (v) {
+          if (v === undefined || v === null) return true;
+          return Number.isInteger(v) && v >= 1;
+        },
+        message: 'Vị trí ngăn phải là số nguyên dương',
+      },
+      default: null,
+    },
     DaXoa: {
       type: Boolean,
       default: false,
@@ -109,11 +127,20 @@ sachSchema.virtual('NhaXuatBan', {
   justOne: true,
 });
 
+// Virtual populate KeSach qua MaKe (khong dung ObjectId ref)
+sachSchema.virtual('KeSach', {
+  ref: 'KeSach',
+  localField: 'MaKe',
+  foreignField: 'MaKe',
+  justOne: true,
+});
+
 // Text index phuc vu tim kiem sach theo ten va tac gia
 sachSchema.index({ TenSach: 'text', NguonGocTacGia: 'text' });
 
 // Index ho tro truy van loc theo NXB va trang thai xoa mem
 sachSchema.index({ MaNXB: 1 });
+sachSchema.index({ MaKe: 1 });
 sachSchema.index({ DaXoa: 1 });
 
 export const Sach = mongoose.model('Sach', sachSchema);

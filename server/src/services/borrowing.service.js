@@ -362,7 +362,8 @@ export const getMyBorrowings = async (maDocGia, query = {}, now = new Date()) =>
       .limit(safeLimit)
       .populate({
         path: 'Sach',
-        select: 'MaSach TenSach AnhBia DonGia NamXuatBan NguonGocTacGia TheLoai SoQuyenConLai',
+        select: 'MaSach TenSach AnhBia DonGia NamXuatBan NguonGocTacGia TheLoai SoQuyenConLai MaKe ViTriNgan',
+        populate: { path: 'KeSach', select: 'MaKe TenKe KhuVuc SoNgan' },
       })
       .lean(),
     TheoDoiMuonSach.countDocuments(filter),
@@ -408,11 +409,17 @@ export const getBorrowingDetail = async (maDocGia, id, now = new Date()) => {
   })
     .populate({
       path: 'Sach',
-      select: 'MaSach TenSach AnhBia DonGia NamXuatBan NguonGocTacGia TheLoai SoQuyenConLai MaNXB',
-      populate: {
-        path: 'NhaXuatBan',
-        select: 'MaNXB TenNXB DiaChi',
-      },
+      select: 'MaSach TenSach AnhBia DonGia NamXuatBan NguonGocTacGia TheLoai SoQuyenConLai MaNXB MaKe ViTriNgan',
+      populate: [
+        {
+          path: 'NhaXuatBan',
+          select: 'MaNXB TenNXB DiaChi',
+        },
+        {
+          path: 'KeSach',
+          select: 'MaKe TenKe KhuVuc SoNgan',
+        },
+      ],
     })
     .lean();
 
@@ -600,7 +607,8 @@ export const adminListBorrowings = async (query = {}, now = new Date()) => {
       })
       .populate({
         path: 'Sach',
-        select: 'MaSach TenSach AnhBia DonGia SoQuyenConLai',
+        select: 'MaSach TenSach AnhBia DonGia SoQuyenConLai MaKe ViTriNgan',
+        populate: { path: 'KeSach', select: 'MaKe TenKe KhuVuc SoNgan' },
       })
       .populate({
         path: 'NhanVienDuyet',
@@ -655,11 +663,17 @@ export const adminGetBorrowingDetail = async (id, now = new Date()) => {
     })
     .populate({
       path: 'Sach',
-      select: 'MaSach TenSach AnhBia DonGia NamXuatBan NguonGocTacGia TheLoai SoQuyenConLai MaNXB',
-      populate: {
-        path: 'NhaXuatBan',
-        select: 'MaNXB TenNXB DiaChi',
-      },
+      select: 'MaSach TenSach AnhBia DonGia NamXuatBan NguonGocTacGia TheLoai SoQuyenConLai MaNXB MaKe ViTriNgan',
+      populate: [
+        {
+          path: 'NhaXuatBan',
+          select: 'MaNXB TenNXB DiaChi',
+        },
+        {
+          path: 'KeSach',
+          select: 'MaKe TenKe KhuVuc SoNgan',
+        },
+      ],
     })
     .populate({
       path: 'NhanVienDuyet',

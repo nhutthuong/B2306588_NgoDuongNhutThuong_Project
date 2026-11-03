@@ -8,11 +8,12 @@ const CODE_CONFIGS = {
   Sach: { prefix: 'S', digits: 4 },
   NhaXuatBan: { prefix: 'NXB', digits: 3 },
   NhanVien: { prefix: 'NV', digits: 3 },
+  KeSach: { prefix: 'KE', digits: 3 },
 };
 
 /**
  * Sinh ma nghiep vu tiep theo mot cach nguyen tu bang MongoDB $inc tren collection Counter
- * @param {string} name - Ten doi tuong: 'DocGia' | 'Sach' | 'NhaXuatBan' | 'NhanVien'
+ * @param {string} name - Ten doi tuong: 'DocGia' | 'Sach' | 'NhaXuatBan' | 'NhanVien' | 'KeSach'
  * @returns {Promise<string>} Ma nghiep vu da duoc dinh dang (vd: DG0001, S0001, NXB001, NV001)
  */
 export const nextCode = async (name) => {

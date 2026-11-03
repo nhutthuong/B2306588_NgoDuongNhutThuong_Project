@@ -7,6 +7,7 @@ export { CauHinh } from './CauHinh.js';
 export { RefreshToken } from './RefreshToken.js';
 export { NhatKy } from './NhatKy.js';
 export { Counter } from './Counter.js';
+export { KeSach } from './KeSach.js';
 
 import DocGia from './DocGia.js';
 import Sach from './Sach.js';
@@ -17,6 +18,7 @@ import CauHinh from './CauHinh.js';
 import RefreshToken from './RefreshToken.js';
 import NhatKy from './NhatKy.js';
 import Counter from './Counter.js';
+import KeSach from './KeSach.js';
 
 export default {
   DocGia,
@@ -28,4 +30,5 @@ export default {
   RefreshToken,
   NhatKy,
   Counter,
+  KeSach,
 };

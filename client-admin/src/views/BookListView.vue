@@ -569,10 +569,19 @@ const handleCancelDelete = () => {
                 <div class="fw-semibold text-dark text-break">
                   {{ book.TenSach }}
                 </div>
-                <div class="text-muted small mt-1 d-flex align-items-center gap-2">
+                <div class="text-muted small mt-1 d-flex flex-wrap align-items-center gap-2">
                   <span><i class="bi bi-person me-1"></i>{{ book.NguonGocTacGia }}</span>
                   <span v-if="book.TheLoai" class="badge bg-light text-secondary border">
                     {{ book.TheLoai }}
+                  </span>
+                  <span
+                    v-if="book.KeSach || book.MaKe"
+                    class="badge bg-info-subtle text-info-emphasis border border-info-subtle"
+                    :title="(book.KeSach?.KhuVuc ? book.KeSach.KhuVuc + ' • ' : '') + (book.KeSach?.TenKe || book.MaKe) + (book.ViTriNgan ? ' (Ngăn ' + book.ViTriNgan + ')' : '')"
+                  >
+                    <i class="bi bi-geo-alt-fill text-danger me-1"></i>
+                    {{ book.KeSach?.TenKe || book.MaKe }}
+                    <span v-if="book.ViTriNgan"> (N{{ book.ViTriNgan }})</span>
                   </span>
                 </div>
               </td>

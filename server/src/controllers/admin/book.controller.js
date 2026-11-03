@@ -9,6 +9,7 @@ const currentYear = new Date().getFullYear();
 export const listBooksQuerySchema = Joi.object({
   search: Joi.string().allow('').trim().default(''),
   maNXB: Joi.string().allow('').trim().default(''),
+  maKe: Joi.string().allow('').trim().default(''),
   theLoai: Joi.string().allow('').trim().default(''),
   daXoa: Joi.boolean().default(false),
   page: Joi.number().integer().min(1).default(1).messages({
@@ -100,6 +101,14 @@ export const createBookSchema = Joi.object({
   MoTa: Joi.string().trim().max(2000).allow('').optional().messages({
     'string.max': 'Mô tả không được vượt quá 2000 ký tự',
   }),
+  MaKe: Joi.string().trim().pattern(/^KE\d{3,}$/).allow('', null).optional().messages({
+    'string.pattern.base': 'Mã kệ sách không đúng định dạng (ví dụ: KE001)',
+  }),
+  ViTriNgan: Joi.number().integer().min(1).max(20).allow(null, '').optional().messages({
+    'number.base': 'Vị trí ngăn phải là số nguyên',
+    'number.min': 'Vị trí ngăn tối thiểu là 1',
+    'number.max': 'Vị trí ngăn tối đa là 20',
+  }),
 });
 
 // Schema validate body multipart cap nhat sach (cung validate nhu POST + cho phep XoaAnhBia)
@@ -145,6 +154,14 @@ export const updateBookSchema = Joi.object({
   }),
   MoTa: Joi.string().trim().max(2000).allow('').optional().messages({
     'string.max': 'Mô tả không được vượt quá 2000 ký tự',
+  }),
+  MaKe: Joi.string().trim().pattern(/^KE\d{3,}$/).allow('', null).optional().messages({
+    'string.pattern.base': 'Mã kệ sách không đúng định dạng (ví dụ: KE001)',
+  }),
+  ViTriNgan: Joi.number().integer().min(1).max(20).allow(null, '').optional().messages({
+    'number.base': 'Vị trí ngăn phải là số nguyên',
+    'number.min': 'Vị trí ngăn tối thiểu là 1',
+    'number.max': 'Vị trí ngăn tối đa là 20',
   }),
   XoaAnhBia: Joi.boolean().optional().default(false),
 });

@@ -746,6 +746,15 @@ onUnmounted(() => {
                     <div class="small text-muted font-monospace" style="font-size: 0.75rem;">
                       Mã: {{ item.MaSach }}
                     </div>
+                    <div
+                      v-if="item.Sach?.KeSach || item.Sach?.MaKe"
+                      class="small text-danger fw-semibold"
+                      style="font-size: 0.75rem;"
+                      :title="(item.Sach?.KeSach?.KhuVuc ? item.Sach.KeSach.KhuVuc + ' • ' : '') + (item.Sach?.KeSach?.TenKe || item.Sach?.MaKe)"
+                    >
+                      <i class="bi bi-geo-alt-fill me-1"></i>{{ item.Sach?.KeSach?.TenKe || item.Sach?.MaKe }}
+                      <span v-if="item.Sach?.ViTriNgan"> (N{{ item.Sach?.ViTriNgan }})</span>
+                    </div>
                     <div class="small text-primary fw-medium" style="font-size: 0.75rem;">
                       {{ formatCurrency(item.Sach?.DonGia || 0) }}
                     </div>
@@ -969,6 +978,15 @@ onUnmounted(() => {
                     <div><strong>Tác giả:</strong> {{ selectedBorrowing.Sach?.NguonGocTacGia || '—' }}</div>
                     <div><strong>Đơn giá sách:</strong> <span class="text-primary fw-semibold">{{ formatCurrency(selectedBorrowing.Sach?.DonGia) }}</span></div>
                     <div><strong>Tồn kho hiện tại:</strong> Còn {{ selectedBorrowing.Sach?.SoQuyenConLai }} / {{ selectedBorrowing.Sach?.SoQuyen }} cuốn</div>
+                    <div v-if="selectedBorrowing.Sach?.KeSach || selectedBorrowing.Sach?.MaKe">
+                      <strong>Vị trí trên kệ:</strong>
+                      <span class="text-danger fw-semibold">
+                        <i class="bi bi-geo-alt-fill me-1"></i>
+                        {{ selectedBorrowing.Sach?.KeSach?.KhuVuc ? selectedBorrowing.Sach.KeSach.KhuVuc + ' • ' : '' }}
+                        {{ selectedBorrowing.Sach?.KeSach?.TenKe || selectedBorrowing.Sach?.MaKe }}
+                        <span v-if="selectedBorrowing.Sach?.ViTriNgan"> (Ngăn {{ selectedBorrowing.Sach.ViTriNgan }})</span>
+                      </span>
+                    </div>
                   </div>
                 </div>
               </div>
@@ -1200,6 +1218,16 @@ onUnmounted(() => {
             <p class="mb-3">
               Xác nhận bàn giao cuốn sách <strong>{{ borrowingToHandover.Sach?.TenSach || borrowingToHandover.MaSach }}</strong> cho độc giả <strong>{{ borrowingToHandover.DocGia?.Ten || borrowingToHandover.MaDocGia }}</strong>.
             </p>
+
+            <div v-if="borrowingToHandover.Sach?.KeSach || borrowingToHandover.Sach?.MaKe" class="alert alert-warning py-2 px-3 small mb-3 rounded-3 d-flex align-items-center gap-2">
+              <i class="bi bi-geo-alt-fill text-danger fs-5 flex-shrink-0"></i>
+              <div>
+                <strong>Vị trí lấy sách trên kệ:</strong>
+                {{ borrowingToHandover.Sach?.KeSach?.KhuVuc ? borrowingToHandover.Sach.KeSach.KhuVuc + ' • ' : '' }}
+                {{ borrowingToHandover.Sach?.KeSach?.TenKe || borrowingToHandover.Sach?.MaKe }}
+                <span v-if="borrowingToHandover.Sach?.ViTriNgan"> (Ngăn số {{ borrowingToHandover.Sach.ViTriNgan }})</span>
+              </div>
+            </div>
 
             <div class="alert alert-info py-2 px-3 small mb-0 rounded-3">
               <i class="bi bi-info-circle me-1"></i>

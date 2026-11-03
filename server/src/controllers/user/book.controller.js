@@ -9,6 +9,7 @@ const currentYear = new Date().getFullYear();
 export const listBooksQuerySchema = Joi.object({
   search: Joi.string().allow('').trim().default(''),
   maNXB: Joi.string().allow('').trim().default(''),
+  maKe: Joi.string().allow('').trim().default(''),
   namXuatBan: Joi.number().integer().min(1000).max(currentYear).optional().messages({
     'number.base': 'Năm xuất bản phải là số nguyên',
     'number.integer': 'Năm xuất bản phải là số nguyên',

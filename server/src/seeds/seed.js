@@ -11,6 +11,7 @@ import {
   RefreshToken,
   NhatKy,
   Counter,
+  KeSach,
 } from '../models/index.js';
 import { nextCode, resetAllCounters } from '../services/code.service.js';
 
@@ -53,6 +54,7 @@ const runSeed = async () => {
         RefreshToken.deleteMany({}),
         NhatKy.deleteMany({}),
         Counter.deleteMany({}),
+        KeSach.deleteMany({}),
       ]);
       await resetAllCounters();
       console.log('Da lam sach toan bo du lieu cu.');
@@ -154,6 +156,26 @@ const runSeed = async () => {
         DiaChi: p.DiaChi,
       });
       createdNXB.push(nxb);
+    }
+
+    // 3.2b. Tao 4 ke sach mau
+    console.log('Dang tao ke sach mau...');
+    const shelvesData = [
+      { TenKe: 'Kệ Văn học Việt Nam 01', KhuVuc: 'Tầng 1 - Phòng Đọc A', SoNgan: 5 },
+      { TenKe: 'Kệ Khoa học & Công nghệ', KhuVuc: 'Tầng 2 - Khu B', SoNgan: 6 },
+      { TenKe: 'Kệ Kỹ năng & Đời sống', KhuVuc: 'Tầng 1 - Khu C', SoNgan: 5 },
+      { TenKe: 'Kệ Lịch sử & Địa lý', KhuVuc: 'Tầng 2 - Khu A', SoNgan: 4 },
+    ];
+    const createdShelves = [];
+    for (const s of shelvesData) {
+      const maKe = await nextCode('KeSach');
+      const shelf = await KeSach.create({
+        MaKe: maKe,
+        TenKe: s.TenKe,
+        KhuVuc: s.KhuVuc,
+        SoNgan: s.SoNgan,
+      });
+      createdShelves.push(shelf);
     }
 
     // 3.3. Tao 20 dau sach that tieng Viet
@@ -387,11 +409,15 @@ const runSeed = async () => {
     ];
 
     const createdBooks = [];
-    for (const b of booksData) {
+    for (let i = 0; i < booksData.length; i++) {
+      const b = booksData[i];
       const maSach = await nextCode('Sach');
+      const targetShelf = createdShelves[i % createdShelves.length];
       const book = await Sach.create({
         MaSach: maSach,
         ...b,
+        MaKe: targetShelf.MaKe,
+        ViTriNgan: (i % targetShelf.SoNgan) + 1,
       });
       createdBooks.push(book);
     }
@@ -675,6 +701,7 @@ const printSummary = async () => {
     countAdmin,
     countStaff,
     countNXB,
+    countKeSach,
     countSach,
     countDocGia,
     countPhieu,
@@ -684,6 +711,7 @@ const printSummary = async () => {
     NhanVien.countDocuments({ VaiTro: 'admin' }),
     NhanVien.countDocuments({ VaiTro: 'thuthu' }),
     NhaXuatBan.countDocuments(),
+    KeSach.countDocuments(),
     Sach.countDocuments(),
     DocGia.countDocuments(),
     TheoDoiMuonSach.countDocuments(),
@@ -699,6 +727,7 @@ const printSummary = async () => {
   console.log(`- NhanVien admin: ${countAdmin} (MSNV: ${admin ? admin.MSNV : 'chua co'})`);
   console.log(`- NhanVien thuthu:${countStaff}`);
   console.log(`- NhaXuatBan:     ${countNXB}`);
+  console.log(`- KeSach:         ${countKeSach}`);
   console.log(`- Sach:           ${countSach}`);
   console.log(`- DocGia:         ${countDocGia}`);
   console.log(`- TheoDoiMuonSach:${countPhieu}`);

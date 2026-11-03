@@ -77,6 +77,12 @@ const routes = [
     meta: { requiresAuth: true, title: 'Nhà xuất bản' },
   },
   {
+    path: '/shelves',
+    name: 'shelves',
+    component: () => import('../views/ShelvesView.vue'),
+    meta: { requiresAuth: true, title: 'Quản lý Kệ sách' },
+  },
+  {
     path: '/borrowings',
     name: 'borrowings',
     component: () => import('../views/BorrowingsView.vue'),

@@ -11,6 +11,7 @@ const menuItems = [
   { path: '/', label: 'Dashboard', icon: 'bi-speedometer2' },
   { path: '/books', label: 'Sách', icon: 'bi-book' },
   { path: '/publishers', label: 'Nhà xuất bản', icon: 'bi-building' },
+  { path: '/shelves', label: 'Kệ sách', icon: 'bi-bookshelf' },
   { path: '/borrowings', label: 'Mượn sách', icon: 'bi-journal-bookmark' },
   { path: '/readers', label: 'Độc giả', icon: 'bi-people' },
   { path: '/staff', label: 'Nhân viên', icon: 'bi-person-badge', adminOnly: true },

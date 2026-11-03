@@ -1,5 +1,6 @@
 import Sach from '../models/Sach.js';
 import NhaXuatBan from '../models/NhaXuatBan.js';
+import KeSach from '../models/KeSach.js';
 import TheoDoiMuonSach from '../models/TheoDoiMuonSach.js';
 import ApiError from '../utils/ApiError.js';
 import escapeRegex from '../utils/escapeRegex.js';
@@ -71,6 +72,7 @@ const normalizeSpaces = (str = '') => {
 export const getBooks = async ({
   search = '',
   maNXB = '',
+  maKe = '',
   theLoai = '',
   namXuatBan = '',
   conSach = false,
@@ -93,6 +95,11 @@ export const getBooks = async ({
   // Lọc theo NXB
   if (maNXB && typeof maNXB === 'string' && maNXB.trim()) {
     filter.MaNXB = String(maNXB).trim().toUpperCase();
+  }
+
+  // Lọc theo Kệ sách
+  if (maKe && typeof maKe === 'string' && maKe.trim()) {
+    filter.MaKe = String(maKe).trim().toUpperCase();
   }
 
   // Lọc theo Thể loại
@@ -140,20 +147,43 @@ export const getBooks = async ({
       .lean(),
   ]);
 
-  // Lấy TenNXB cho toàn bộ danh sách bằng MỘT truy vấn gộp duy nhất (không N+1)
+  // Lấy TenNXB và KeSach cho toàn bộ danh sách bằng truy vấn gộp (không N+1)
   const publisherCodes = [...new Set(books.map((b) => b.MaNXB).filter(Boolean))];
-  let publisherMap = new Map();
+  const shelfCodes = [...new Set(books.map((b) => b.MaKe).filter(Boolean))];
 
+  let publisherMap = new Map();
+  let shelfMap = new Map();
+
+  const parallelFetches = [];
   if (publisherCodes.length > 0) {
-    const publishers = await NhaXuatBan.find({ MaNXB: { $in: publisherCodes } })
-      .select('MaNXB TenNXB')
-      .lean();
-    publisherMap = new Map(publishers.map((p) => [p.MaNXB, p.TenNXB]));
+    parallelFetches.push(
+      NhaXuatBan.find({ MaNXB: { $in: publisherCodes } })
+        .select('MaNXB TenNXB')
+        .lean()
+        .then((res) => {
+          publisherMap = new Map(res.map((p) => [p.MaNXB, p.TenNXB]));
+        })
+    );
+  }
+  if (shelfCodes.length > 0) {
+    parallelFetches.push(
+      KeSach.find({ MaKe: { $in: shelfCodes } })
+        .select('MaKe TenKe KhuVuc SoNgan')
+        .lean()
+        .then((res) => {
+          shelfMap = new Map(res.map((s) => [s.MaKe, s]));
+        })
+    );
+  }
+
+  if (parallelFetches.length > 0) {
+    await Promise.all(parallelFetches);
   }
 
   const items = books.map((book) => ({
     ...book,
     TenNXB: publisherMap.get(book.MaNXB) || '',
+    KeSach: shelfMap.get(book.MaKe) || null,
     conSach: (book.SoQuyenConLai || 0) > 0,
   }));
 
@@ -163,7 +193,7 @@ export const getBooks = async ({
 };
 
 /**
- * Lấy chi tiết một cuốn sách kèm thông tin NXB (dành cho Admin)
+ * Lấy chi tiết một cuốn sách kèm thông tin NXB và Kệ sách (dành cho Admin)
  * (sách đã xóa mềm vẫn xem được ở admin, kèm cờ DaXoa = true)
  *
  * @param {string} maSach
@@ -177,14 +207,22 @@ export const getBookByCode = async (maSach) => {
     throw new ApiError(404, 'NOT_FOUND', 'Không tìm thấy sách yêu cầu');
   }
 
-  const publisher = await NhaXuatBan.findOne({ MaNXB: book.MaNXB })
-    .select('MaNXB TenNXB DiaChi')
-    .lean();
+  const [publisher, shelf] = await Promise.all([
+    NhaXuatBan.findOne({ MaNXB: book.MaNXB })
+      .select('MaNXB TenNXB DiaChi')
+      .lean(),
+    book.MaKe
+      ? KeSach.findOne({ MaKe: book.MaKe })
+          .select('MaKe TenKe KhuVuc SoNgan')
+          .lean()
+      : null,
+  ]);
 
   return {
     ...book,
     TenNXB: publisher?.TenNXB || '',
     NhaXuatBan: publisher || null,
+    KeSach: shelf || null,
     conSach: (book.SoQuyenConLai || 0) > 0,
   };
 };
@@ -208,14 +246,22 @@ export const getUserBookByCode = async (maSach) => {
     throw new ApiError(404, 'NOT_FOUND', 'Không tìm thấy sách yêu cầu');
   }
 
-  const publisher = await NhaXuatBan.findOne({ MaNXB: book.MaNXB })
-    .select('MaNXB TenNXB DiaChi')
-    .lean();
+  const [publisher, shelf] = await Promise.all([
+    NhaXuatBan.findOne({ MaNXB: book.MaNXB })
+      .select('MaNXB TenNXB DiaChi')
+      .lean(),
+    book.MaKe
+      ? KeSach.findOne({ MaKe: book.MaKe })
+          .select('MaKe TenKe KhuVuc SoNgan')
+          .lean()
+      : null,
+  ]);
 
   return {
     ...book,
     TenNXB: publisher?.TenNXB || '',
     NhaXuatBan: publisher || null,
+    KeSach: shelf || null,
     conSach: (book.SoQuyenConLai || 0) > 0,
   };
 };
@@ -240,6 +286,35 @@ export const createBook = async (bookData, file, admin = null, reqIp = '') => {
       'VALIDATION_ERROR',
       `Mã nhà xuất bản không tồn tại trong hệ thống (MaNXB: ${safeMaNXB})`
     );
+  }
+
+  // Xác thực MaKe (kệ sách) nếu có gửi
+  let safeMaKe = null;
+  let safeViTriNgan = null;
+  if (bookData.MaKe && String(bookData.MaKe).trim()) {
+    safeMaKe = String(bookData.MaKe).trim().toUpperCase();
+    const shelf = await KeSach.findOne({ MaKe: safeMaKe }).lean();
+    if (!shelf) {
+      throw new ApiError(
+        400,
+        'VALIDATION_ERROR',
+        `Mã kệ sách không tồn tại trong hệ thống (MaKe: ${safeMaKe})`
+      );
+    }
+    if (
+      bookData.ViTriNgan !== undefined &&
+      bookData.ViTriNgan !== null &&
+      String(bookData.ViTriNgan).trim() !== ''
+    ) {
+      safeViTriNgan = parseInt(bookData.ViTriNgan, 10);
+      if (safeViTriNgan > shelf.SoNgan) {
+        throw new ApiError(
+          400,
+          'VALIDATION_ERROR',
+          `Vị trí ngăn (${safeViTriNgan}) vượt quá số ngăn tối đa của kệ "${shelf.TenKe}" (${shelf.SoNgan} ngăn)`
+        );
+      }
+    }
   }
 
   // Xử lý tệp ảnh bìa nếu có gửi kèm
@@ -280,6 +355,8 @@ export const createBook = async (bookData, file, admin = null, reqIp = '') => {
       TheLoai: bookData.TheLoai ? String(bookData.TheLoai).trim() : '',
       MoTa: bookData.MoTa ? String(bookData.MoTa).trim() : '',
       AnhBia: anhBiaPath,
+      MaKe: safeMaKe,
+      ViTriNgan: safeViTriNgan,
       DaXoa: false, // Server tự set DaXoa = false
     });
   } catch (err) {
@@ -356,6 +433,65 @@ export const updateBook = async (maSach, updateData, file, admin = null, reqIp =
     );
   }
 
+  // Xác thực MaKe (kệ sách) nếu có gửi cập nhật
+  let safeMaKe = current.MaKe || null;
+  let safeViTriNgan = current.ViTriNgan || null;
+
+  if (updateData.MaKe !== undefined) {
+    if (updateData.MaKe && String(updateData.MaKe).trim()) {
+      safeMaKe = String(updateData.MaKe).trim().toUpperCase();
+      const shelf = await KeSach.findOne({ MaKe: safeMaKe }).lean();
+      if (!shelf) {
+        throw new ApiError(
+          400,
+          'VALIDATION_ERROR',
+          `Mã kệ sách không tồn tại trong hệ thống (MaKe: ${safeMaKe})`
+        );
+      }
+      if (
+        updateData.ViTriNgan !== undefined &&
+        updateData.ViTriNgan !== null &&
+        String(updateData.ViTriNgan).trim() !== ''
+      ) {
+        safeViTriNgan = parseInt(updateData.ViTriNgan, 10);
+        if (safeViTriNgan > shelf.SoNgan) {
+          throw new ApiError(
+            400,
+            'VALIDATION_ERROR',
+            `Vị trí ngăn (${safeViTriNgan}) vượt quá số ngăn tối đa của kệ "${shelf.TenKe}" (${shelf.SoNgan} ngăn)`
+          );
+        }
+      } else {
+        safeViTriNgan = null;
+      }
+    } else {
+      // Gỡ sách khỏi kệ
+      safeMaKe = null;
+      safeViTriNgan = null;
+    }
+  } else if (updateData.ViTriNgan !== undefined) {
+    if (safeMaKe) {
+      const shelf = await KeSach.findOne({ MaKe: safeMaKe }).lean();
+      if (
+        updateData.ViTriNgan !== null &&
+        String(updateData.ViTriNgan).trim() !== ''
+      ) {
+        safeViTriNgan = parseInt(updateData.ViTriNgan, 10);
+        if (shelf && safeViTriNgan > shelf.SoNgan) {
+          throw new ApiError(
+            400,
+            'VALIDATION_ERROR',
+            `Vị trí ngăn (${safeViTriNgan}) vượt quá số ngăn tối đa của kệ "${shelf.TenKe}" (${shelf.SoNgan} ngăn)`
+          );
+        }
+      } else {
+        safeViTriNgan = null;
+      }
+    } else {
+      safeViTriNgan = null;
+    }
+  }
+
   // Xử lý cập nhật/gỡ ảnh bìa
   let newAnhBia = undefined;
   let newlySavedPath = null;
@@ -400,6 +536,8 @@ export const updateBook = async (maSach, updateData, file, admin = null, reqIp =
       NguonGocTacGia: normalizedTacGia,
       TheLoai: updateData.TheLoai ? String(updateData.TheLoai).trim() : '',
       MoTa: updateData.MoTa ? String(updateData.MoTa).trim() : '',
+      MaKe: safeMaKe,
+      ViTriNgan: safeViTriNgan,
       updatedAt: '$$NOW',
     };
 
