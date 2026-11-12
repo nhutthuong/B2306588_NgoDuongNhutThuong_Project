@@ -5,9 +5,10 @@ import { useAuthStore } from '../stores/auth.js';
 import { userApi } from '../api/user.api.js';
 import { borrowingApi } from '../api/borrowing.api.js';
 import { getErrorMessage, getFieldErrors } from '../api/http.js';
-import { formatDate, formatCurrency } from '../utils/format.js';
+import { formatDate, formatCurrency, getAvatarUrl } from '../utils/format.js';
 import AppAlert from '../components/AppAlert.vue';
 import LoadingSpinner from '../components/LoadingSpinner.vue';
+import ConfirmModal from '../components/ConfirmModal.vue';
 
 const authStore = useAuthStore();
 
@@ -238,8 +239,8 @@ const validateProfileClient = () => {
     }
   }
 
-  if (!['Nam', 'Nu', 'Khac'].includes(profileForm.Phai)) {
-    errors.Phai = 'Vui lòng chọn giới tính hợp lệ';
+  if (!['Nam', 'Nu'].includes(profileForm.Phai)) {
+    errors.Phai = 'Vui lòng chọn giới tính hợp lệ (Nam hoặc Nữ)';
   }
 
   const phoneRegex = /^(0|\+84)\d{9}$/;
@@ -401,6 +402,101 @@ const handleChangePassword = async () => {
   }
 };
 
+// Quản lý ảnh đại diện (Avatar)
+const fileInputRef = ref(null);
+const isUploadingAvatar = ref(false);
+const isDeletingAvatar = ref(false);
+const avatarAlert = reactive({
+  type: 'info',
+  message: '',
+});
+
+const currentAvatarUrl = computed(() => {
+  const raw = profileData.value?.avatar_url || authStore.user?.avatar_url;
+  return getAvatarUrl(raw);
+});
+
+const triggerFileInput = () => {
+  if (isUploadingAvatar.value || isDeletingAvatar.value) return;
+  fileInputRef.value?.click();
+};
+
+const handleFileChange = async (event) => {
+  const file = event.target.files?.[0];
+  if (!file) return;
+
+  // Reset giá trị input để có thể chọn lại file cùng tên nếu cần
+  event.target.value = '';
+
+  // Kiểm tra định dạng file
+  const allowedMimes = ['image/jpeg', 'image/png', 'image/webp'];
+  if (!allowedMimes.includes(file.type)) {
+    avatarAlert.type = 'danger';
+    avatarAlert.message = 'Chỉ chấp nhận ảnh định dạng JPG, PNG hoặc WebP';
+    return;
+  }
+
+  // Kiểm tra dung lượng (tối đa 2MB)
+  if (file.size > 2 * 1024 * 1024) {
+    avatarAlert.type = 'danger';
+    avatarAlert.message = 'Dung lượng ảnh đại diện không được vượt quá 2MB';
+    return;
+  }
+
+  avatarAlert.message = '';
+  isUploadingAvatar.value = true;
+
+  try {
+    const res = await userApi.uploadAvatar(file);
+    const newAvatarUrl = res.data?.data?.avatar_url || '';
+    if (profileData.value) {
+      profileData.value.avatar_url = newAvatarUrl;
+    }
+    authStore.setUser({ avatar_url: newAvatarUrl });
+
+    avatarAlert.type = 'success';
+    avatarAlert.message = 'Cập nhật ảnh đại diện thành công';
+  } catch (err) {
+    avatarAlert.type = 'danger';
+    avatarAlert.message = getErrorMessage(err) || 'Không thể tải lên ảnh đại diện';
+  } finally {
+    isUploadingAvatar.value = false;
+  }
+};
+
+const deleteAvatarModalRef = ref(null);
+
+const openDeleteAvatarModal = () => {
+  if (isUploadingAvatar.value || isDeletingAvatar.value) return;
+  deleteAvatarModalRef.value?.show();
+};
+
+const confirmDeleteAvatar = async () => {
+  if (isUploadingAvatar.value || isDeletingAvatar.value) return;
+
+  avatarAlert.message = '';
+  isDeletingAvatar.value = true;
+
+  try {
+    await userApi.deleteAvatar();
+    if (profileData.value) {
+      profileData.value.avatar_url = '';
+    }
+    authStore.setUser({ avatar_url: '' });
+
+    deleteAvatarModalRef.value?.hide();
+
+    avatarAlert.type = 'success';
+    avatarAlert.message = 'Đã xóa ảnh đại diện thành công';
+  } catch (err) {
+    avatarAlert.type = 'danger';
+    avatarAlert.message = getErrorMessage(err) || 'Không thể xóa ảnh đại diện';
+    deleteAvatarModalRef.value?.hide();
+  } finally {
+    isDeletingAvatar.value = false;
+  }
+};
+
 onMounted(() => {
   loadInitialData();
 });
@@ -442,11 +538,91 @@ onMounted(() => {
         <!-- Thẻ hồ sơ cá nhân tổng quan -->
         <div class="card shadow-sm border-0 rounded-4 mb-4 overflow-hidden">
           <div class="bg-primary bg-gradient p-4 text-white text-center position-relative">
-            <div
-              class="avatar-circle mx-auto mb-3 d-flex align-items-center justify-content-center shadow"
-            >
-              <i class="bi bi-person-fill text-primary display-5"></i>
+            <!-- Input file ẩn để tải ảnh đại diện -->
+            <input
+              ref="fileInputRef"
+              type="file"
+              accept="image/jpeg,image/png,image/webp"
+              class="d-none"
+              @change="handleFileChange"
+            />
+
+            <!-- Vùng ảnh đại diện kèm nút camera -->
+            <div class="position-relative d-inline-block mb-2">
+              <div
+                class="avatar-circle d-flex align-items-center justify-content-center shadow overflow-hidden cursor-pointer position-relative"
+                :title="currentAvatarUrl ? 'Nhấp để đổi ảnh đại diện' : 'Nhấp để tải lên ảnh đại diện'"
+                @click="triggerFileInput"
+              >
+                <div
+                  v-if="isUploadingAvatar || isDeletingAvatar"
+                  class="spinner-border spinner-border-sm text-primary"
+                  role="status"
+                >
+                  <span class="visually-hidden">Đang xử lý...</span>
+                </div>
+                <img
+                  v-else-if="currentAvatarUrl"
+                  :src="currentAvatarUrl"
+                  alt="Avatar"
+                  class="w-100 h-100 object-fit-cover"
+                />
+                <i v-else class="bi bi-person-fill text-primary display-5"></i>
+              </div>
+
+              <!-- Nút icon camera nhỏ góc avatar -->
+              <button
+                type="button"
+                class="avatar-badge-btn btn btn-light shadow-sm rounded-circle p-0 position-absolute d-flex align-items-center justify-content-center"
+                :title="currentAvatarUrl ? 'Đổi ảnh đại diện' : 'Tải lên ảnh đại diện'"
+                :disabled="isUploadingAvatar || isDeletingAvatar"
+                @click.stop="triggerFileInput"
+              >
+                <i class="bi bi-camera-fill text-primary small"></i>
+              </button>
             </div>
+
+            <!-- Các nút thao tác ảnh: Tải lên / Đổi ảnh & Xóa ảnh -->
+            <div class="d-flex justify-content-center align-items-center gap-2 mb-3">
+              <button
+                type="button"
+                class="btn btn-sm btn-outline-light rounded-pill px-3 py-1 shadow-sm d-flex align-items-center gap-1"
+                :disabled="isUploadingAvatar || isDeletingAvatar"
+                @click="triggerFileInput"
+              >
+                <span v-if="isUploadingAvatar" class="spinner-border spinner-border-sm me-1" role="status"></span>
+                <i v-else class="bi bi-cloud-arrow-up-fill"></i>
+                <span class="small">{{ currentAvatarUrl ? 'Đổi ảnh' : 'Tải ảnh lên' }}</span>
+              </button>
+
+              <button
+                v-if="currentAvatarUrl"
+                type="button"
+                class="btn btn-sm btn-outline-light rounded-pill px-3 py-1 shadow-sm d-flex align-items-center gap-1 text-white border-white-50"
+                :disabled="isUploadingAvatar || isDeletingAvatar"
+                @click="openDeleteAvatarModal"
+                title="Xóa ảnh đại diện"
+              >
+                <span v-if="isDeletingAvatar" class="spinner-border spinner-border-sm me-1" role="status"></span>
+                <i v-else class="bi bi-trash3-fill"></i>
+                <span class="small">Xóa ảnh</span>
+              </button>
+            </div>
+
+            <!-- Thông báo trạng thái ảnh đại diện -->
+            <div v-if="avatarAlert.message" class="mb-3 px-1">
+              <div
+                class="alert py-1 px-3 small mb-0 rounded-pill d-flex align-items-center justify-content-between shadow-sm"
+                :class="avatarAlert.type === 'success' ? 'alert-success text-success-emphasis border-success-subtle' : 'alert-danger text-danger-emphasis border-danger-subtle'"
+              >
+                <span class="d-flex align-items-center gap-1">
+                  <i :class="avatarAlert.type === 'success' ? 'bi bi-check-circle-fill' : 'bi bi-exclamation-circle-fill'"></i>
+                  {{ avatarAlert.message }}
+                </span>
+                <button type="button" class="btn-close btn-close-sm ms-2" style="font-size: 0.65rem;" @click="avatarAlert.message = ''"></button>
+              </div>
+            </div>
+
             <h2 class="h5 fw-bold mb-1">
               {{ profileData ? `${profileData.HoLot} ${profileData.Ten}` : authStore.fullName }}
             </h2>
@@ -707,18 +883,6 @@ onMounted(() => {
                           :disabled="isSavingProfile"
                         />
                         <label class="form-check-label" for="phaiNu">Nữ</label>
-                      </div>
-                      <div class="form-check">
-                        <input
-                          id="phaiKhac"
-                          v-model="profileForm.Phai"
-                          class="form-check-input"
-                          type="radio"
-                          value="Khac"
-                          name="phaiRadio"
-                          :disabled="isSavingProfile"
-                        />
-                        <label class="form-check-label" for="phaiKhac">Khác</label>
                       </div>
                     </div>
                     <div v-if="profileFieldErrors.Phai" class="text-danger small mt-1">
@@ -1073,16 +1237,68 @@ onMounted(() => {
         </div>
       </div>
     </div>
+
+    <!-- MODAL XÁC NHẬN XÓA ẢNH ĐẠI DIỆN -->
+    <ConfirmModal
+      ref="deleteAvatarModalRef"
+      title="Xác nhận xóa ảnh đại diện"
+      confirm-text="Xóa ảnh"
+      cancel-text="Hủy bỏ"
+      confirm-btn-class="btn-danger"
+      icon="bi-trash3-fill text-danger"
+      :is-processing="isDeletingAvatar"
+      @confirm="confirmDeleteAvatar"
+    >
+      <div class="text-center py-2">
+        <div class="mb-3">
+          <img
+            v-if="currentAvatarUrl"
+            :src="currentAvatarUrl"
+            alt="Avatar"
+            class="rounded-circle object-fit-cover shadow-sm border border-2 border-danger-subtle"
+            style="width: 80px; height: 80px;"
+          />
+        </div>
+        <p class="mb-1 text-dark fw-semibold">
+          Bạn có chắc chắn muốn xóa ảnh đại diện này không?
+        </p>
+        <p class="small text-muted mb-0">
+          Ảnh sẽ được xóa khỏi hệ thống và tài khoản của bạn sẽ chuyển về biểu tượng đại diện mặc định.
+        </p>
+      </div>
+    </ConfirmModal>
   </div>
 </template>
 
 <style scoped>
 .avatar-circle {
-  width: 72px;
-  height: 72px;
+  width: 88px;
+  height: 88px;
   background-color: #ffffff;
   border-radius: 50%;
-  border: 3px solid rgba(255, 255, 255, 0.4);
+  border: 3px solid rgba(255, 255, 255, 0.6);
+  transition: transform 0.2s ease, box-shadow 0.2s ease;
+}
+
+.avatar-circle:hover {
+  transform: scale(1.03);
+}
+
+.cursor-pointer {
+  cursor: pointer;
+}
+
+.avatar-badge-btn {
+  bottom: 0;
+  right: 0;
+  width: 28px;
+  height: 28px;
+  border: 2px solid #ffffff;
+  transition: transform 0.2s ease;
+}
+
+.avatar-badge-btn:hover {
+  transform: scale(1.12);
 }
 
 .nav-tabs .nav-link {

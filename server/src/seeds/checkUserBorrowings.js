@@ -162,7 +162,7 @@ const runTests = async () => {
       HoLot: 'Le',
       Ten: 'Bi Khoa',
       NgaySinh: new Date('1999-03-03'),
-      Phai: 'Khac',
+      Phai: 'Nu',
       Email: `${DG_LOCKED.toLowerCase()}@test.vn`,
       Password: 'Password123',
       TrangThai: 'BiKhoa',

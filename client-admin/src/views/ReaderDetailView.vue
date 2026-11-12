@@ -3,7 +3,7 @@ import { ref, computed, watch, onMounted } from 'vue';
 import { useRoute, useRouter, RouterLink } from 'vue-router';
 import readerApi from '../api/reader.api.js';
 import { useAuthStore } from '../stores/auth.js';
-import { formatCurrency, formatDate } from '../utils/format.js';
+import { formatCurrency, formatDate, getAvatarUrl } from '../utils/format.js';
 import { getErrorMessage } from '../api/http.js';
 import StatusBadge from '../components/StatusBadge.vue';
 import AppPagination from '../components/AppPagination.vue';
@@ -321,8 +321,16 @@ watch(
       <!-- Tiêu đề và các nút thao tác đầu trang -->
       <div class="d-flex flex-wrap align-items-center justify-content-between gap-3 mb-4">
         <div class="d-flex align-items-center gap-3">
-          <div class="avatar-circle bg-primary-subtle text-primary fw-bold fs-4 d-flex align-items-center justify-content-center">
-            <i class="bi bi-person"></i>
+          <div class="avatar-circle overflow-hidden shadow-sm flex-shrink-0 d-flex align-items-center justify-content-center border border-2 border-white">
+            <img
+              v-if="getAvatarUrl(reader.avatar_url)"
+              :src="getAvatarUrl(reader.avatar_url)"
+              alt="Avatar"
+              class="w-100 h-100 object-fit-cover"
+            />
+            <div v-else class="w-100 h-100 bg-primary-subtle text-primary fw-bold fs-4 d-flex align-items-center justify-content-center">
+              <i class="bi bi-person"></i>
+            </div>
           </div>
           <div>
             <div class="d-flex align-items-center gap-2">
@@ -488,7 +496,7 @@ watch(
             </div>
             <div class="col-md-3 col-sm-6">
               <div class="text-muted small">Giới tính</div>
-              <div>{{ reader.Phai === 'Nam' ? 'Nam' : reader.Phai === 'Nu' ? 'Nữ' : 'Khác' }}</div>
+              <div>{{ reader.Phai === 'Nam' ? 'Nam' : 'Nữ' }}</div>
             </div>
             <div class="col-md-3 col-sm-6">
               <div class="text-muted small">Ngày sinh</div>

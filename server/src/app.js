@@ -12,7 +12,7 @@ import { generalLimiter } from './middlewares/rateLimit.js';
 import apiRouter from './routes/index.js';
 import notFound from './middlewares/notFound.js';
 import errorHandler from './middlewares/errorHandler.js';
-import { COVERS_DIR, SAFE_FILENAME_REGEX } from './utils/imageType.js';
+import { COVERS_DIR, AVATARS_DIR, SAFE_FILENAME_REGEX } from './utils/imageType.js';
 
 const app = express();
 
@@ -82,6 +82,37 @@ app.get('/uploads/covers/:filename', (req, res, next) => {
   const filePath = path.join(COVERS_DIR, filename);
   if (!fs.existsSync(filePath)) {
     return next(new ApiError(404, 'NOT_FOUND', 'Không tìm thấy tệp ảnh bìa'));
+  }
+
+  res.setHeader('Cross-Origin-Resource-Policy', 'cross-origin');
+  res.setHeader('X-Content-Type-Options', 'nosniff');
+  res.setHeader('Cache-Control', 'public, max-age=86400, immutable');
+
+  const ext = path.extname(filename).toLowerCase();
+  const mimeTypes = {
+    '.jpg': 'image/jpeg',
+    '.jpeg': 'image/jpeg',
+    '.png': 'image/png',
+    '.webp': 'image/webp',
+  };
+  res.setHeader('Content-Type', mimeTypes[ext] || 'application/octet-stream');
+
+  return res.sendFile(filePath);
+});
+
+// Route phục vụ file tĩnh ảnh đại diện: GET /uploads/avatars/:filename
+// Thiết lập Cross-Origin-Resource-Policy: cross-origin để client khác cổng load được ảnh
+app.get('/uploads/avatars/:filename', (req, res, next) => {
+  const { filename } = req.params;
+
+  // Chỉ phục vụ file có tên khớp định dạng UUID/hex hợp lệ (.jpg|.png|.webp), chặn dotfiles và path traversal
+  if (!SAFE_FILENAME_REGEX.test(filename)) {
+    return next(new ApiError(404, 'NOT_FOUND', 'Không tìm thấy tệp ảnh đại diện'));
+  }
+
+  const filePath = path.join(AVATARS_DIR, filename);
+  if (!fs.existsSync(filePath)) {
+    return next(new ApiError(404, 'NOT_FOUND', 'Không tìm thấy tệp ảnh đại diện'));
   }
 
   res.setHeader('Cross-Origin-Resource-Policy', 'cross-origin');

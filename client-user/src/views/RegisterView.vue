@@ -109,8 +109,8 @@ const validateClientSide = () => {
     }
   }
 
-  if (!['Nam', 'Nu', 'Khac'].includes(form.value.Phai)) {
-    errors.Phai = 'Vui lòng chọn giới tính';
+  if (!['Nam', 'Nu'].includes(form.value.Phai)) {
+    errors.Phai = 'Vui lòng chọn giới tính (Nam hoặc Nữ)';
   }
 
   if (form.value.DiaChi.trim().length > 200) {
@@ -320,18 +320,6 @@ const handleRegister = async () => {
                       :disabled="isLoading"
                     />
                     <label class="form-check-label small" for="genderNu">Nữ</label>
-                  </div>
-                  <div class="form-check">
-                    <input
-                      id="genderKhac"
-                      v-model="form.Phai"
-                      class="form-check-input"
-                      type="radio"
-                      value="Khac"
-                      name="genderRadio"
-                      :disabled="isLoading"
-                    />
-                    <label class="form-check-label small" for="genderKhac">Khác</label>
                   </div>
                 </div>
                 <div v-if="fieldErrors.Phai" class="text-danger small mt-1">

@@ -21,6 +21,11 @@ import {
 } from '../../services/auth.service.js';
 import { nextCode } from '../../services/code.service.js';
 import { logAction } from '../../services/audit.service.js';
+import {
+  detectImageType,
+  saveAvatarImage,
+  deleteAvatarImage,
+} from '../../utils/imageType.js';
 
 // Helper tính toán và kiểm tra tuổi (từ 5 đến 120 tuổi)
 const validateAge = (value, helpers) => {
@@ -63,9 +68,9 @@ export const registerSchema = Joi.object({
     'date.base': 'Ngày sinh không đúng định dạng ngày tháng',
     'date.format': 'Ngày sinh phải theo định dạng ngày (YYYY-MM-DD)',
   }),
-  Phai: Joi.string().valid('Nam', 'Nu', 'Khac').required().messages({
+  Phai: Joi.string().valid('Nam', 'Nu').required().messages({
     'any.required': 'Phái là bắt buộc',
-    'any.only': 'Phái phải là Nam, Nu hoặc Khac',
+    'any.only': 'Phái phải là Nam hoặc Nu',
   }),
   DiaChi: Joi.string().trim().max(200).allow('').optional().messages({
     'string.max': 'Địa chỉ không được vượt quá 200 ký tự',
@@ -122,8 +127,8 @@ export const updateMeSchema = Joi.object({
     'date.base': 'Ngày sinh không đúng định dạng ngày tháng',
     'date.format': 'Ngày sinh phải theo định dạng ngày (YYYY-MM-DD)',
   }),
-  Phai: Joi.string().valid('Nam', 'Nu', 'Khac').messages({
-    'any.only': 'Phái phải là Nam, Nu hoặc Khac',
+  Phai: Joi.string().valid('Nam', 'Nu').messages({
+    'any.only': 'Phái phải là Nam hoặc Nu',
   }),
   DiaChi: Joi.string().trim().max(200).allow('').messages({
     'string.max': 'Địa chỉ không được vượt quá 200 ký tự',
@@ -253,6 +258,7 @@ export const login = asyncHandler(async (req, res) => {
         HoLot: user.HoLot,
         Ten: user.Ten,
         Email: user.Email,
+        avatar_url: user.avatar_url || '',
       },
     },
     'Đăng nhập thành công'
@@ -332,7 +338,7 @@ export const logout = asyncHandler(async (req, res) => {
  */
 export const getMe = asyncHandler(async (req, res) => {
   const docGia = await DocGia.findOne({ MaDocGia: req.user.maDocGia })
-    .select('MaDocGia HoLot Ten NgaySinh Phai DiaChi DienThoai Email TrangThai createdAt updatedAt LanDangNhapCuoi')
+    .select('MaDocGia HoLot Ten NgaySinh Phai DiaChi DienThoai Email TrangThai createdAt updatedAt LanDangNhapCuoi avatar_url')
     .lean();
 
   if (!docGia) {
@@ -362,7 +368,7 @@ export const updateMe = asyncHandler(async (req, res) => {
     { $set: updateData },
     { new: true, runValidators: true }
   )
-    .select('MaDocGia HoLot Ten NgaySinh Phai DiaChi DienThoai Email TrangThai createdAt updatedAt LanDangNhapCuoi')
+    .select('MaDocGia HoLot Ten NgaySinh Phai DiaChi DienThoai Email TrangThai createdAt updatedAt LanDangNhapCuoi avatar_url')
     .lean();
 
   if (!updatedDocGia) {
@@ -467,9 +473,131 @@ export const changePassword = asyncHandler(async (req, res) => {
         HoLot: account.HoLot,
         Ten: account.Ten,
         Email: account.Email,
+        avatar_url: account.avatar_url || '',
       },
     },
     'Đổi mật khẩu thành công'
+  );
+});
+
+/**
+ * POST /api/user/auth/avatar
+ * Tải lên hoặc thay thế ảnh đại diện của độc giả
+ */
+export const uploadAvatar = asyncHandler(async (req, res) => {
+  if (!req.file || !req.file.buffer) {
+    throw new ApiError(400, 'VALIDATION_ERROR', 'Vui lòng chọn tệp ảnh đại diện để tải lên');
+  }
+
+  // Kiểm tra magic bytes ảnh (JPEG, PNG, WebP)
+  const detected = detectImageType(req.file.buffer);
+  if (!detected) {
+    throw new ApiError(
+      400,
+      'VALIDATION_ERROR',
+      'Định dạng ảnh không hợp lệ. Chỉ chấp nhận tệp định dạng JPG, PNG hoặc WebP'
+    );
+  }
+
+  const docGia = await DocGia.findOne({ MaDocGia: req.user.maDocGia });
+  if (!docGia) {
+    throw new ApiError(404, 'NOT_FOUND', 'Không tìm thấy tài khoản độc giả');
+  }
+
+  if (docGia.TrangThai === 'BiKhoa') {
+    throw new ApiError(403, 'ACCOUNT_LOCKED', 'Tài khoản độc giả đã bị khóa');
+  }
+
+  const oldAvatarUrl = docGia.avatar_url;
+
+  // Lưu file ảnh đại diện mới vào uploads/avatars/
+  let savedPath;
+  try {
+    savedPath = await saveAvatarImage(req.file.buffer, detected.ext);
+  } catch {
+    throw new ApiError(500, 'INTERNAL_ERROR', 'Không thể lưu trữ tệp ảnh đại diện');
+  }
+
+  // Cập nhật CSDL
+  try {
+    docGia.avatar_url = savedPath;
+    await docGia.save();
+  } catch (err) {
+    // Nếu lưu DB thất bại, xóa ngay file vừa lưu để tránh rác
+    await deleteAvatarImage(savedPath);
+    throw err;
+  }
+
+  // Xóa file ảnh cũ trên server ngay khi cập nhật ảnh mới thành công
+  if (oldAvatarUrl && oldAvatarUrl !== savedPath) {
+    await deleteAvatarImage(oldAvatarUrl);
+  }
+
+  // Ghi nhật ký
+  await logAction({
+    hanhDong: 'CAP_NHAT_AVATAR',
+    doiTuong: 'DocGia',
+    maDoiTuong: docGia.MaDocGia,
+    chiTiet: {
+      avatar_url: savedPath,
+    },
+    ip: req.ip,
+  });
+
+  const updatedDocGia = docGia.toJSON();
+
+  return ok(
+    res,
+    {
+      avatar_url: savedPath,
+      user: updatedDocGia,
+    },
+    'Cập nhật ảnh đại diện thành công'
+  );
+});
+
+/**
+ * DELETE /api/user/auth/avatar
+ * Xóa ảnh đại diện của độc giả
+ */
+export const deleteAvatar = asyncHandler(async (req, res) => {
+  const docGia = await DocGia.findOne({ MaDocGia: req.user.maDocGia });
+  if (!docGia) {
+    throw new ApiError(404, 'NOT_FOUND', 'Không tìm thấy tài khoản độc giả');
+  }
+
+  if (docGia.TrangThai === 'BiKhoa') {
+    throw new ApiError(403, 'ACCOUNT_LOCKED', 'Tài khoản độc giả đã bị khóa');
+  }
+
+  const oldAvatarUrl = docGia.avatar_url;
+
+  if (oldAvatarUrl) {
+    // Xóa file ảnh trên server
+    await deleteAvatarImage(oldAvatarUrl);
+    docGia.avatar_url = '';
+    await docGia.save();
+
+    await logAction({
+      hanhDong: 'XOA_AVATAR',
+      doiTuong: 'DocGia',
+      maDoiTuong: docGia.MaDocGia,
+      chiTiet: {
+        old_avatar: oldAvatarUrl,
+      },
+      ip: req.ip,
+    });
+  }
+
+  const updatedDocGia = docGia.toJSON();
+
+  return ok(
+    res,
+    {
+      avatar_url: '',
+      user: updatedDocGia,
+    },
+    'Xóa ảnh đại diện thành công'
   );
 });
 
@@ -485,4 +613,6 @@ export default {
   getMe,
   updateMe,
   changePassword,
+  uploadAvatar,
+  deleteAvatar,
 };

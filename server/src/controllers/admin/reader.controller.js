@@ -113,8 +113,8 @@ export const updateReaderSchema = Joi.object({
     'date.base': 'Ngày sinh không đúng định dạng ngày tháng',
     'date.format': 'Ngày sinh phải theo định dạng ngày (YYYY-MM-DD)',
   }),
-  Phai: Joi.string().valid('Nam', 'Nu', 'Khac').messages({
-    'any.only': 'Phái phải là Nam, Nu hoặc Khac',
+  Phai: Joi.string().valid('Nam', 'Nu').messages({
+    'any.only': 'Phái phải là Nam hoặc Nu',
   }),
   DiaChi: Joi.string().trim().max(200).allow('').messages({
     'string.max': 'Địa chỉ không được vượt quá 200 ký tự',

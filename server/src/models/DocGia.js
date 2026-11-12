@@ -35,8 +35,8 @@ const docGiaSchema = new mongoose.Schema(
       type: String,
       required: [true, 'Phái là bắt buộc'],
       enum: {
-        values: ['Nam', 'Nu', 'Khac'],
-        message: 'Phái phải là Nam, Nu hoặc Khac',
+        values: ['Nam', 'Nu'],
+        message: 'Phái phải là Nam hoặc Nu',
       },
       default: 'Nam',
     },
@@ -87,6 +87,11 @@ const docGiaSchema = new mongoose.Schema(
     LanDangNhapCuoi: {
       type: Date,
       default: null,
+    },
+    avatar_url: {
+      type: String,
+      trim: true,
+      default: '',
     },
   },
   {

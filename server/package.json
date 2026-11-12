@@ -26,7 +26,8 @@
     "check:readers": "node src/seeds/checkReaders.js",
     "check:staff": "node src/seeds/checkStaff.js",
     "check:settings": "node src/seeds/checkSettingsAndAudit.js",
-    "check:stats": "node src/seeds/checkStats.js"
+    "check:stats": "node src/seeds/checkStats.js",
+    "check:avatar": "node src/seeds/checkAvatar.js"
   },
   "dependencies": {
     "bcryptjs": "^3.0.3",

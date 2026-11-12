@@ -2,7 +2,7 @@
 import { ref, computed, watch, onUnmounted } from 'vue';
 import { useRoute, useRouter, RouterLink } from 'vue-router';
 import readerApi from '../api/reader.api.js';
-import { formatCurrency, formatDate } from '../utils/format.js';
+import { formatCurrency, formatDate, getAvatarUrl } from '../utils/format.js';
 import { getErrorMessage } from '../api/http.js';
 import AppPagination from '../components/AppPagination.vue';
 import EmptyState from '../components/EmptyState.vue';
@@ -384,10 +384,33 @@ onUnmounted(() => {
 
                 <!-- Họ và tên -->
                 <td>
-                  <div class="fw-semibold text-dark">{{ r.HoLot }} {{ r.Ten }}</div>
-                  <div class="small text-muted">
-                    <span>{{ r.Phai === 'Nam' ? 'Nam' : r.Phai === 'Nu' ? 'Nữ' : 'Khác' }}</span>
-                    <span v-if="r.NgaySinh"> · {{ formatDate(r.NgaySinh) }}</span>
+                  <div class="d-flex align-items-center gap-2">
+                    <img
+                      v-if="getAvatarUrl(r.avatar_url)"
+                      :src="getAvatarUrl(r.avatar_url)"
+                      alt="Avatar"
+                      class="rounded-circle object-fit-cover border shadow-sm flex-shrink-0"
+                      style="width: 38px; height: 38px;"
+                    />
+                    <div
+                      v-else
+                      class="rounded-circle bg-primary bg-opacity-10 text-primary d-flex align-items-center justify-content-center flex-shrink-0"
+                      style="width: 38px; height: 38px;"
+                    >
+                      <i class="bi bi-person-fill fs-5"></i>
+                    </div>
+                    <div>
+                      <RouterLink
+                        :to="`/readers/${r.MaDocGia}`"
+                        class="fw-semibold text-dark text-decoration-none hover-primary d-block"
+                      >
+                        {{ r.HoLot }} {{ r.Ten }}
+                      </RouterLink>
+                      <div class="small text-muted">
+                        <span>{{ r.Phai === 'Nam' ? 'Nam' : 'Nữ' }}</span>
+                        <span v-if="r.NgaySinh"> · {{ formatDate(r.NgaySinh) }}</span>
+                      </div>
+                    </div>
                   </div>
                 </td>
 

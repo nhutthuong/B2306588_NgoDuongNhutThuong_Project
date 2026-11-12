@@ -3,6 +3,7 @@ import { ref, reactive, computed, onMounted, onUnmounted } from 'vue';
 import { Modal } from 'bootstrap';
 import readerApi from '../api/reader.api.js';
 import { getErrorMessage, getFieldErrors } from '../api/http.js';
+import { getAvatarUrl } from '../utils/format.js';
 
 const emit = defineEmits(['saved']);
 
@@ -20,6 +21,7 @@ const form = reactive({
   DiaChi: '',
   DienThoai: '',
   Email: '',
+  avatar_url: '',
 });
 
 const errors = reactive({
@@ -94,6 +96,7 @@ const open = (readerData) => {
   form.DiaChi = readerData.DiaChi || '';
   form.DienThoai = readerData.DienThoai || '';
   form.Email = readerData.Email || '';
+  form.avatar_url = readerData.avatar_url || '';
 
   isSubmitting.value = false;
 
@@ -156,8 +159,8 @@ const validateClient = () => {
     }
   }
 
-  if (!['Nam', 'Nu', 'Khac'].includes(form.Phai)) {
-    errors.Phai = 'Phái phải là Nam, Nữ hoặc Khác';
+  if (!['Nam', 'Nu'].includes(form.Phai)) {
+    errors.Phai = 'Phái phải là Nam hoặc Nữ';
     isValid = false;
   }
 
@@ -246,6 +249,28 @@ defineExpose({
 
         <form @submit.prevent="handleSubmit" novalidate>
           <div class="modal-body p-4">
+            <!-- Thông tin tóm tắt & Avatar độc giả -->
+            <div class="d-flex align-items-center gap-3 p-3 bg-light rounded-3 mb-3">
+              <img
+                v-if="getAvatarUrl(form.avatar_url)"
+                :src="getAvatarUrl(form.avatar_url)"
+                alt="Avatar"
+                class="rounded-circle object-fit-cover shadow-sm border border-2 border-white flex-shrink-0"
+                style="width: 48px; height: 48px;"
+              />
+              <div
+                v-else
+                class="rounded-circle bg-primary bg-opacity-10 text-primary d-flex align-items-center justify-content-center flex-shrink-0"
+                style="width: 48px; height: 48px;"
+              >
+                <i class="bi bi-person-fill fs-4"></i>
+              </div>
+              <div class="overflow-hidden">
+                <div class="fw-bold text-dark">{{ form.HoLot }} {{ form.Ten }}</div>
+                <div class="small text-muted font-monospace">{{ targetMaDocGia }} · {{ form.Email }}</div>
+              </div>
+            </div>
+
             <!-- Thông báo lỗi chung nếu có -->
             <div
               v-if="errors.general"
@@ -348,7 +373,6 @@ defineExpose({
                 >
                   <option value="Nam">Nam</option>
                   <option value="Nu">Nữ</option>
-                  <option value="Khac">Khác</option>
                 </select>
                 <div v-if="errors.Phai" class="invalid-feedback">
                   {{ errors.Phai }}

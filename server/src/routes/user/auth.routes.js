@@ -5,6 +5,7 @@ import { authLimiter } from '../../middlewares/rateLimit.js';
 import validate from '../../middlewares/validate.js';
 import authUser from '../../middlewares/authUser.js';
 import checkOrigin from '../../middlewares/checkOrigin.js';
+import { uploadAvatar as uploadAvatarMiddleware } from '../../middlewares/upload.js';
 import {
   register,
   login,
@@ -13,6 +14,8 @@ import {
   getMe,
   updateMe,
   changePassword,
+  uploadAvatar,
+  deleteAvatar,
   registerSchema,
   loginSchema,
   updateMeSchema,
@@ -41,6 +44,12 @@ router.patch('/me', authUser, validate(updateMeSchema), updateMe);
 
 // PATCH /api/user/auth/change-password: yêu cầu authUser, đổi mật khẩu
 router.patch('/change-password', authUser, validate(changePasswordSchema), changePassword);
+
+// POST /api/user/auth/avatar: yêu cầu authUser, tải lên hoặc cập nhật ảnh đại diện
+router.post('/avatar', authUser, uploadAvatarMiddleware.single('avatar'), uploadAvatar);
+
+// DELETE /api/user/auth/avatar: yêu cầu authUser, xóa ảnh đại diện
+router.delete('/avatar', authUser, deleteAvatar);
 
 // TODO (P3-2): Gỡ bỏ route kiểm thử này trước khi hoàn thành Phase 3
 // Route kiểm thử tạm thời, CHỈ đăng ký khi NODE_ENV khác production

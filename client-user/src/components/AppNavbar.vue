@@ -1,11 +1,58 @@
 <script setup>
-import { RouterLink, useRouter } from 'vue-router';
+import { ref, computed, onMounted, onUnmounted, watch } from 'vue';
+import { RouterLink, useRouter, useRoute } from 'vue-router';
 import { useAuthStore } from '../stores/auth.js';
+import { getAvatarUrl } from '../utils/format.js';
 
 const router = useRouter();
+const route = useRoute();
 const authStore = useAuthStore();
 
+const userAvatarUrl = computed(() => getAvatarUrl(authStore.user?.avatar_url));
+
+const isDropdownOpen = ref(false);
+const dropdownRef = ref(null);
+
+const toggleDropdown = () => {
+  isDropdownOpen.value = !isDropdownOpen.value;
+};
+
+const closeDropdown = () => {
+  isDropdownOpen.value = false;
+};
+
+const handleClickOutside = (event) => {
+  if (dropdownRef.value && !dropdownRef.value.contains(event.target)) {
+    closeDropdown();
+  }
+};
+
+const handleKeyDown = (event) => {
+  if (event.key === 'Escape') {
+    closeDropdown();
+  }
+};
+
+// Đóng dropdown khi chuyển trang
+watch(
+  () => route.fullPath,
+  () => {
+    closeDropdown();
+  }
+);
+
+onMounted(() => {
+  document.addEventListener('click', handleClickOutside);
+  document.addEventListener('keydown', handleKeyDown);
+});
+
+onUnmounted(() => {
+  document.removeEventListener('click', handleClickOutside);
+  document.removeEventListener('keydown', handleKeyDown);
+});
+
 const handleLogout = async () => {
+  closeDropdown();
   await authStore.logout();
   router.push('/login');
 };
@@ -51,40 +98,78 @@ const handleLogout = async () => {
         <div class="d-flex align-items-center gap-2">
           <!-- Khi ĐÃ đăng nhập: Hiện menu dropdown tên người dùng -->
           <template v-if="authStore.isAuthenticated">
-            <div class="dropdown">
+            <div ref="dropdownRef" class="dropdown">
               <button
                 class="btn btn-outline-light btn-sm dropdown-toggle d-flex align-items-center gap-2 py-1 px-3 rounded-pill"
                 type="button"
                 id="userMenuButton"
-                data-bs-toggle="dropdown"
-                aria-expanded="false"
+                :class="{ show: isDropdownOpen }"
+                :aria-expanded="isDropdownOpen"
+                @click.stop="toggleDropdown"
               >
-                <i class="bi bi-person-circle fs-5"></i>
+                <img
+                  v-if="userAvatarUrl"
+                  :src="userAvatarUrl"
+                  alt="Avatar"
+                  class="rounded-circle object-fit-cover border border-light flex-shrink-0"
+                  style="width: 24px; height: 24px;"
+                />
+                <i v-else class="bi bi-person-circle fs-5"></i>
                 <span class="fw-semibold">
                   {{ authStore.fullName || authStore.user?.Email || 'Độc giả' }}
                 </span>
               </button>
 
-              <ul class="dropdown-menu dropdown-menu-end shadow-sm border-0 rounded-3 mt-2" aria-labelledby="userMenuButton">
+              <ul
+                class="dropdown-menu dropdown-menu-end shadow-sm border-0 rounded-3 mt-2"
+                :class="{ show: isDropdownOpen }"
+                aria-labelledby="userMenuButton"
+              >
                 <li class="px-3 py-2 border-bottom">
-                  <div class="fw-bold text-dark text-truncate" style="max-width: 220px;">
-                    {{ authStore.fullName || 'Độc giả' }}
-                  </div>
-                  <div class="small text-muted text-truncate" style="max-width: 220px;">
-                    {{ authStore.user?.Email }}
+                  <div class="d-flex align-items-center gap-2 mb-1">
+                    <img
+                      v-if="userAvatarUrl"
+                      :src="userAvatarUrl"
+                      alt="Avatar"
+                      class="rounded-circle object-fit-cover border flex-shrink-0"
+                      style="width: 38px; height: 38px;"
+                    />
+                    <div
+                      v-else
+                      class="rounded-circle bg-light d-flex align-items-center justify-content-center flex-shrink-0 text-primary"
+                      style="width: 38px; height: 38px;"
+                    >
+                      <i class="bi bi-person-fill fs-4"></i>
+                    </div>
+                    <div class="overflow-hidden">
+                      <div class="fw-bold text-dark text-truncate" style="max-width: 170px;">
+                        {{ authStore.fullName || 'Độc giả' }}
+                      </div>
+                      <div class="small text-muted text-truncate" style="max-width: 170px;">
+                        {{ authStore.user?.Email }}
+                      </div>
+                    </div>
                   </div>
                   <div v-if="authStore.user?.MaDocGia" class="badge bg-light text-primary border mt-1">
                     Mã: {{ authStore.user.MaDocGia }}
                   </div>
                 </li>
                 <li>
-                  <RouterLink class="dropdown-item py-2 d-flex align-items-center gap-2" to="/my-borrowings">
+                  <RouterLink
+                    class="dropdown-item py-2 d-flex align-items-center gap-2"
+                    to="/my-borrowings"
+                    @click="closeDropdown"
+                  >
                     <i class="bi bi-journal-check text-primary"></i>
                     <span>Lịch sử mượn</span>
                   </RouterLink>
                 </li>
                 <li>
-                  <RouterLink class="dropdown-item py-2 d-flex align-items-center gap-2" to="/profile">
+                  <RouterLink
+                    class="dropdown-item py-2 d-flex align-items-center gap-2"
+                    to="/profile"
+                    @click="closeDropdown"
+                  >
                     <i class="bi bi-person-vcard text-primary"></i>
                     <span>Hồ sơ cá nhân</span>
                   </RouterLink>
@@ -120,6 +205,13 @@ const handleLogout = async () => {
     </div>
   </nav>
 </template>
+
+<style scoped>
+.dropdown-menu-end {
+  right: 0;
+  left: auto;
+}
+</style>
 
 <style scoped>
 .navbar-brand {

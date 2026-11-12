@@ -22,11 +22,11 @@ export const errorHandler = (err, req, res, next) => {
     if (err.code === 'LIMIT_FILE_SIZE') {
       statusCode = 413;
       code = 'PAYLOAD_TOO_LARGE';
-      message = 'Dung lượng ảnh bìa vượt quá giới hạn (ảnh tối đa 2MB)';
+      message = 'Dung lượng ảnh vượt quá giới hạn (ảnh tối đa 2MB)';
     } else if (err.code === 'LIMIT_FILE_COUNT') {
       statusCode = 400;
       code = 'VALIDATION_ERROR';
-      message = 'Chỉ được phép tải lên tối đa 1 tệp ảnh bìa';
+      message = 'Chỉ được phép tải lên tối đa 1 tệp ảnh';
     } else if (err.code === 'LIMIT_UNEXPECTED_FILE') {
       statusCode = 400;
       code = 'VALIDATION_ERROR';

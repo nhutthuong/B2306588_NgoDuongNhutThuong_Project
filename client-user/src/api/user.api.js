@@ -33,6 +33,31 @@ export const userApi = {
   changePassword(payload) {
     return http.patch('/user/auth/change-password', payload);
   },
+
+  /**
+   * Tải lên hoặc cập nhật ảnh đại diện
+   * POST /api/user/auth/avatar
+   * @param {File} file
+   * @returns {Promise}
+   */
+  uploadAvatar(file) {
+    const formData = new FormData();
+    formData.append('avatar', file);
+    return http.post('/user/auth/avatar', formData, {
+      headers: {
+        'Content-Type': 'multipart/form-data',
+      },
+    });
+  },
+
+  /**
+   * Xóa ảnh đại diện hiện tại
+   * DELETE /api/user/auth/avatar
+   * @returns {Promise}
+   */
+  deleteAvatar() {
+    return http.delete('/user/auth/avatar');
+  },
 };
 
 export default userApi;

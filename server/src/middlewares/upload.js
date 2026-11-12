@@ -30,4 +30,33 @@ export const uploadCover = multer({
   fileFilter,
 });
 
+/**
+ * Bộ lọc file cho avatar: chỉ chấp nhận trường file có tên 'avatar'
+ */
+const avatarFileFilter = (req, file, cb) => {
+  if (file.fieldname !== 'avatar') {
+    return cb(
+      new ApiError(
+        400,
+        'VALIDATION_ERROR',
+        `Trường tải lên không hợp lệ: '${file.fieldname}'. Chỉ chấp nhận trường tệp 'avatar'`
+      )
+    );
+  }
+  cb(null, true);
+};
+
+export const uploadAvatar = multer({
+  storage,
+  limits: {
+    fileSize: 2 * 1024 * 1024, // 2MB
+    files: 1,
+    fields: 10,
+  },
+  fileFilter: avatarFileFilter,
+});
+
+uploadCover.uploadCover = uploadCover;
+uploadCover.uploadAvatar = uploadAvatar;
+
 export default uploadCover;

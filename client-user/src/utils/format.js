@@ -60,3 +60,23 @@ export const getCoverUrl = (anhBia) => {
     return '';
   }
 };
+
+/**
+ * Ghép URL ảnh đại diện độc giả từ backend origin và đường dẫn lưu trong DB.
+ * CHỈ chấp nhận chuỗi bắt đầu bằng "/uploads/avatars/", ngoài ra trả về rỗng (để component hiện ảnh thay thế).
+ * @param {string} avatarUrl
+ * @returns {string}
+ */
+export const getAvatarUrl = (avatarUrl) => {
+  if (!avatarUrl || typeof avatarUrl !== 'string' || !avatarUrl.startsWith('/uploads/avatars/')) {
+    return '';
+  }
+
+  try {
+    const apiUrl = import.meta.env.VITE_API_URL || 'http://localhost:5000/api';
+    const origin = new URL(apiUrl).origin;
+    return `${origin}${avatarUrl}`;
+  } catch {
+    return '';
+  }
+};

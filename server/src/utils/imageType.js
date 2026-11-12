@@ -9,6 +9,9 @@ const __dirname = path.dirname(__filename);
 // Thư mục lưu trữ ảnh bìa: server/uploads/covers (nằm ngoài src)
 export const COVERS_DIR = path.resolve(__dirname, '../../uploads/covers');
 
+// Thư mục lưu trữ ảnh đại diện: server/uploads/avatars (nằm ngoài src)
+export const AVATARS_DIR = path.resolve(__dirname, '../../uploads/avatars');
+
 // Regex kiểm tra tên file an toàn: chỉ gồm ký tự hex, dấu gạch nối và đuôi jpg/png/webp
 export const SAFE_FILENAME_REGEX = /^[a-f0-9-]+\.(jpg|png|webp)$/i;
 
@@ -18,6 +21,15 @@ export const SAFE_FILENAME_REGEX = /^[a-f0-9-]+\.(jpg|png|webp)$/i;
 export const ensureCoversDir = () => {
   if (!fs.existsSync(COVERS_DIR)) {
     fs.mkdirSync(COVERS_DIR, { recursive: true });
+  }
+};
+
+/**
+ * Đảm bảo thư mục lưu trữ ảnh đại diện tồn tại
+ */
+export const ensureAvatarsDir = () => {
+  if (!fs.existsSync(AVATARS_DIR)) {
+    fs.mkdirSync(AVATARS_DIR, { recursive: true });
   }
 };
 
@@ -113,11 +125,63 @@ export const deleteCoverImage = async (storedPath) => {
   }
 };
 
+/**
+ * Lưu file ảnh đại diện vào đĩa với tên ngẫu nhiên
+ *
+ * @param {Buffer} buffer
+ * @param {'jpg'|'png'|'webp'} ext
+ * @returns {Promise<string>} Đường dẫn lưu trong DB dạng /uploads/avatars/<filename>
+ */
+export const saveAvatarImage = async (buffer, ext) => {
+  ensureAvatarsDir();
+  const filename = `${crypto.randomUUID()}.${ext}`;
+  const filePath = path.join(AVATARS_DIR, filename);
+
+  await fs.promises.writeFile(filePath, buffer);
+  return `/uploads/avatars/${filename}`;
+};
+
+/**
+ * Xóa file ảnh đại diện an toàn, chống path traversal
+ *
+ * @param {string} storedPath - Đường dẫn dạng /uploads/avatars/<filename> hoặc tên file
+ */
+export const deleteAvatarImage = async (storedPath) => {
+  if (!storedPath || typeof storedPath !== 'string') return;
+
+  const filename = path.basename(storedPath);
+  if (!SAFE_FILENAME_REGEX.test(filename)) {
+    console.warn(`[UPLOAD_SECURITY] Bỏ qua xóa tệp avatar do tên không hợp lệ: ${filename}`);
+    return;
+  }
+
+  const fullPath = path.join(AVATARS_DIR, filename);
+  const resolved = path.resolve(fullPath);
+
+  // Đảm bảo đường dẫn nằm hoàn toàn trong AVATARS_DIR
+  if (!resolved.startsWith(path.resolve(AVATARS_DIR))) {
+    console.warn(`[UPLOAD_SECURITY] Phát hiện nguy cơ path traversal khi xóa avatar: ${storedPath}`);
+    return;
+  }
+
+  try {
+    await fs.promises.unlink(resolved);
+  } catch (err) {
+    if (err.code !== 'ENOENT') {
+      console.warn(`[UPLOAD_WARN] Không thể xóa avatar cũ (${resolved}): ${err.message}`);
+    }
+  }
+};
+
 export default {
   COVERS_DIR,
+  AVATARS_DIR,
   SAFE_FILENAME_REGEX,
   ensureCoversDir,
+  ensureAvatarsDir,
   detectImageType,
   saveCoverImage,
   deleteCoverImage,
+  saveAvatarImage,
+  deleteAvatarImage,
 };

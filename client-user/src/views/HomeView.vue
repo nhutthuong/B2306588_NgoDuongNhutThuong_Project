@@ -6,6 +6,7 @@ import { useAuthStore } from '../stores/auth.js';
 import bookApi from '../api/book.api.js';
 import publisherApi from '../api/publisher.api.js';
 import { getErrorMessage } from '../api/http.js';
+import { getAvatarUrl } from '../utils/format.js';
 import BookCard from '../components/BookCard.vue';
 import AppPagination from '../components/AppPagination.vue';
 import EmptyState from '../components/EmptyState.vue';
@@ -227,7 +228,18 @@ const handlePageChange = (newPage) => {
     >
       <div class="card-body p-4 d-flex flex-column flex-md-row align-items-md-center justify-content-between gap-3">
         <div class="d-flex align-items-center gap-3">
-          <div class="p-3 bg-primary text-white rounded-circle shadow-sm">
+          <img
+            v-if="getAvatarUrl(authStore.user?.avatar_url)"
+            :src="getAvatarUrl(authStore.user?.avatar_url)"
+            alt="Avatar"
+            class="rounded-circle object-fit-cover shadow-sm border border-2 border-white flex-shrink-0"
+            style="width: 58px; height: 58px;"
+          />
+          <div
+            v-else
+            class="p-3 bg-primary text-white rounded-circle shadow-sm d-flex align-items-center justify-content-center flex-shrink-0"
+            style="width: 58px; height: 58px;"
+          >
             <i class="bi bi-person-fill fs-3"></i>
           </div>
           <div>

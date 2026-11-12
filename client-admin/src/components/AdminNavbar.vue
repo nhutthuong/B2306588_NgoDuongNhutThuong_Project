@@ -1,10 +1,52 @@
 <script setup>
-import { computed } from 'vue';
-import { RouterLink, useRouter } from 'vue-router';
+import { ref, computed, onMounted, onUnmounted, watch } from 'vue';
+import { RouterLink, useRouter, useRoute } from 'vue-router';
 import { useAuthStore } from '../stores/auth.js';
 
 const router = useRouter();
+const route = useRoute();
 const authStore = useAuthStore();
+
+const isDropdownOpen = ref(false);
+const dropdownRef = ref(null);
+
+const toggleDropdown = () => {
+  isDropdownOpen.value = !isDropdownOpen.value;
+};
+
+const closeDropdown = () => {
+  isDropdownOpen.value = false;
+};
+
+const handleClickOutside = (event) => {
+  if (dropdownRef.value && !dropdownRef.value.contains(event.target)) {
+    closeDropdown();
+  }
+};
+
+const handleKeyDown = (event) => {
+  if (event.key === 'Escape') {
+    closeDropdown();
+  }
+};
+
+// Đóng dropdown khi chuyển trang
+watch(
+  () => route.fullPath,
+  () => {
+    closeDropdown();
+  }
+);
+
+onMounted(() => {
+  document.addEventListener('click', handleClickOutside);
+  document.addEventListener('keydown', handleKeyDown);
+});
+
+onUnmounted(() => {
+  document.removeEventListener('click', handleClickOutside);
+  document.removeEventListener('keydown', handleKeyDown);
+});
 
 const isForcedChange = computed(() => authStore.mustChangePassword);
 
@@ -19,6 +61,7 @@ const roleBadge = computed(() => {
 });
 
 const handleLogout = async () => {
+  closeDropdown();
   await authStore.logout();
   router.push('/login');
 };
@@ -57,18 +100,22 @@ const handleLogout = async () => {
         </span>
 
         <!-- Dropdown người dùng -->
-        <div class="dropdown">
+        <div ref="dropdownRef" class="dropdown">
           <button
             class="btn btn-sm btn-outline-secondary dropdown-toggle d-flex align-items-center gap-2 rounded-3"
             type="button"
-            data-bs-toggle="dropdown"
-            aria-expanded="false"
+            :class="{ show: isDropdownOpen }"
+            :aria-expanded="isDropdownOpen"
+            @click.stop="toggleDropdown"
           >
             <i class="bi bi-person-circle fs-6"></i>
             <span class="fw-medium">{{ authStore.currentUser?.HoTenNV || 'Tài khoản' }}</span>
           </button>
 
-          <ul class="dropdown-menu dropdown-menu-end shadow-sm border-0 rounded-3 py-2 mt-1">
+          <ul
+            class="dropdown-menu dropdown-menu-end shadow-sm border-0 rounded-3 py-2 mt-1"
+            :class="{ show: isDropdownOpen }"
+          >
             <li class="px-3 py-1 border-bottom mb-1">
               <div class="fw-bold small text-dark">{{ authStore.currentUser?.HoTenNV }}</div>
               <div class="text-muted small">MSNV: {{ authStore.currentUser?.MSNV }}</div>
@@ -76,7 +123,11 @@ const handleLogout = async () => {
 
             <!-- Chỉ hiện link Đổi mật khẩu nếu không trong trạng thái bắt buộc đổi -->
             <li v-if="!isForcedChange">
-              <RouterLink to="/change-password" class="dropdown-item d-flex align-items-center gap-2 py-2">
+              <RouterLink
+                to="/change-password"
+                class="dropdown-item d-flex align-items-center gap-2 py-2"
+                @click="closeDropdown"
+              >
                 <i class="bi bi-key text-secondary"></i>
                 <span>Đổi mật khẩu</span>
               </RouterLink>
@@ -109,5 +160,9 @@ const handleLogout = async () => {
 <style scoped>
 .admin-topbar {
   min-height: 58px;
+}
+.dropdown-menu-end {
+  right: 0;
+  left: auto;
 }
 </style>
